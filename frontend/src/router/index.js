@@ -1,6 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
+import RoutesView from '../views/RoutesView.vue'
+import NewsView from '../views/NewsView.vue'
+import GalleryView from '../views/GalleryView.vue'
+import CartView from '../views/CartView.vue'
+import AiTripView from '../views/AiTripView.vue'
+import AiQaView from '../views/AiQaView.vue'
+import ProductView from '../views/ProductView.vue'
+import SupportView from '../views/SupportView.vue'
+import MeView from '../views/MeView.vue'
+import LoginView from '../views/LoginView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -11,15 +21,16 @@ const router = createRouter({
       component: HomeView,
     },
     { path: '/create-trip', name: 'create-trip', component: HomeView },
-    { path: '/routes', name: 'routes', component: PlaceholderView, props: { title: '旅游路线' } },
-    { path: '/news', name: 'news', component: PlaceholderView, props: { title: '旅游资讯' } },
-    { path: '/gallery', name: 'gallery', component: PlaceholderView, props: { title: '光影拾记' } },
-    { path: '/cart', name: 'cart', component: PlaceholderView, props: { title: '购物车' } },
-    { path: '/ai-trip', name: 'ai-trip', component: PlaceholderView, props: { title: 'AI规划行程' } },
-    { path: '/ai-qa', name: 'ai-qa', component: PlaceholderView, props: { title: 'AI问答助手' } },
-    { path: '/product', name: 'product', component: PlaceholderView, props: { title: '产品介绍' } },
-    { path: '/support', name: 'support', component: PlaceholderView, props: { title: '联系客服' } },
-    { path: '/me', name: 'me', component: PlaceholderView, props: { title: '个人中心' } },
+    { path: '/routes', name: 'routes', component: RoutesView },
+    { path: '/news', name: 'news', component: NewsView },
+    { path: '/gallery', name: 'gallery', component: GalleryView },
+    { path: '/cart', name: 'cart', component: CartView },
+    { path: '/ai-trip', name: 'ai-trip', component: AiTripView },
+    { path: '/ai-qa', name: 'ai-qa', component: AiQaView },
+    { path: '/product', name: 'product', component: ProductView },
+    { path: '/support', name: 'support', component: SupportView },
+    { path: '/me', name: 'me', component: MeView },
+    { path: '/login', name: 'login', component: LoginView },
   ],
 })
 

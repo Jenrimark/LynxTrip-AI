@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import { getCurrentUserId, getUserById, isLoggedIn } from '../services/lynxDb'
 import logoUrl from '../assets/logo2.png'
 
 const router = useRouter()
@@ -16,7 +17,15 @@ const healthTagType = computed(() => (healthOk.value ? 'success' : 'warning'))
 const sidebarCollapsed = ref(false)
 const SIDEBAR_STORAGE_KEY = 'lynxtrip.sidebar.collapsed'
 
-const isFullBleed = computed(() => active.value === 'home' || active.value === 'create-trip')
+const isFullBleed = computed(
+  () =>
+    active.value === 'home' ||
+    active.value === 'create-trip' ||
+    active.value === 'ai-qa' ||
+    active.value === 'support' ||
+    active.value === 'login'
+)
+const isNoScrollPage = computed(() => active.value === 'ai-qa' || active.value === 'support')
 const isMulticityOpen = ref(false)
 const multicityForm = ref({
   title: '',
@@ -72,6 +81,27 @@ function go(name) {
   router.push({ name })
 }
 
+const loggedIn = ref(false)
+const authLabel = ref('')
+
+function refreshAuth() {
+  loggedIn.value = isLoggedIn()
+  if (loggedIn.value) {
+    const u = getUserById(getCurrentUserId())
+    authLabel.value = u?.xingming || u?.yonghuming || '用户'
+  } else {
+    authLabel.value = ''
+  }
+}
+
+function goMe() {
+  if (!isLoggedIn()) {
+    router.push({ name: 'login', query: { redirect: '/me' } })
+    return
+  }
+  go('me')
+}
+
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   try {
@@ -105,6 +135,8 @@ function handleEscClose(event) {
 }
 
 onMounted(checkHealth)
+onMounted(refreshAuth)
+watch(() => route.fullPath, refreshAuth)
 
 onMounted(() => {
   try {
@@ -205,7 +237,7 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                 </span>
-                <span class="uipro-item__label">AI规划行程</span>
+                <span class="uipro-item__label">AI智能规划</span>
               </button>
               <button class="uipro-item" :class="{ 'is-active': active === 'ai-qa' }" :title="sidebarCollapsed ? 'AI问答助手' : undefined" @click="go('ai-qa')">
                 <span class="uipro-item__icon" aria-hidden="true">
@@ -251,7 +283,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="uipro-bottom">
-          <button class="uipro-item uipro-item--bottom" :class="{ 'is-active': active === 'me' }" :title="sidebarCollapsed ? '个人中心' : undefined" @click="go('me')">
+          <button class="uipro-item uipro-item--bottom" :class="{ 'is-active': active === 'me' }" :title="sidebarCollapsed ? '个人中心' : undefined" @click="goMe">
             <span class="uipro-item__icon" aria-hidden="true">
               <svg class="uipro-ico" viewBox="0 0 24 24">
                 <path
@@ -291,24 +323,26 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="uipro-topbar__right">
+            <span v-if="loggedIn" class="uipro-authName" :title="authLabel">{{ authLabel }}</span>
+            <el-button v-else size="small" type="primary" plain @click="go('login')">登录</el-button>
             <el-tag :type="healthTagType" effect="light" round>{{ healthText }}</el-tag>
             <el-button size="small" type="primary" @click="checkHealth">刷新</el-button>
             <el-button class="uipro-multicity" size="small" @click="openMulticityModal">
-              <span>Multi - City</span>
+              <span>多城市</span>
               <span class="uipro-multicity__caret" aria-hidden="true">▼</span>
             </el-button>
           </div>
         </header>
 
-        <main class="uipro-content" :class="{ 'is-fullbleed': isFullBleed }">
+        <main class="uipro-content" :class="{ 'is-fullbleed': isFullBleed, 'is-noscroll': isNoScrollPage }">
           <slot />
         </main>
       </section>
 
       <div v-if="isMulticityOpen" class="multicity-modal-mask" @click="closeMulticityModal" />
-      <aside v-if="isMulticityOpen" class="multicity-modal" role="dialog" aria-modal="true" aria-label="创建您的行程">
+      <aside v-if="isMulticityOpen" class="multicity-modal" role="dialog" aria-modal="true" aria-label="多城市创建行程">
         <div class="multicity-modal__header">
-          <span>创建您的行程</span>
+          <span>多城市创建行程</span>
         </div>
         <button class="multicity-modal-close" type="button" aria-label="关闭" @click="closeMulticityModal">
           ×
@@ -318,7 +352,7 @@ onBeforeUnmount(() => {
           <form class="multicity-form" @submit.prevent="submitMulticity">
             <div class="multicity-field">
               <label for="project-name">标题</label>
-              <input id="project-name" v-model="multicityForm.title" autocomplete="off" placeholder="请输入行程标题" />
+              <input id="project-name" v-model="multicityForm.title" autocomplete="off" placeholder="例如：武当山×丹江口 多城周末行" />
             </div>
 
             <div class="multicity-field">
@@ -328,14 +362,14 @@ onBeforeUnmount(() => {
                 v-model="multicityForm.description"
                 maxlength="500"
                 rows="4"
-                placeholder="请描述您理想的旅行，包括任何您想包含的具体活动或体验。您提供的细节越多，您的行程将越个性化！"
+                placeholder="写下你想去的城市/景点、预算范围、偏好节奏（轻松/紧凑）、是否含研学/红色主题等。越具体越好。"
               />
             </div>
 
             <div class="multicity-row">
               <div class="multicity-field">
-                <label for="project-city">目的地城市</label>
-                <input id="project-city" v-model="multicityForm.city" placeholder="例如：韶山" />
+                <label for="project-city">首站城市</label>
+                <input id="project-city" v-model="multicityForm.city" placeholder="例如：十堰" />
               </div>
               <div class="multicity-field">
                 <label for="project-days">旅游天数</label>
@@ -351,7 +385,7 @@ onBeforeUnmount(() => {
 
             <section class="multicity-section">
               <h4>红绿古三色倾向</h4>
-              <p class="multicity-section__hint">红色=红色征程/党建相关，绿色=自然生态，古色=古韵建筑/历史人文（预览条会自动归一）。</p>
+              <p class="multicity-section__hint">红色=红色征程/研学，绿色=自然生态，古色=古韵人文（预览条会自动归一）。</p>
               <div class="multicity-ratio-card">
                 <div class="multicity-ratio-row">
                   <label>红色征程</label>
@@ -388,7 +422,7 @@ onBeforeUnmount(() => {
             </section>
 
             <div class="multicity-actions">
-              <button type="submit" class="create-button">创建</button>
+              <button type="submit" class="create-button">创建多城市行程</button>
             </div>
           </form>
         </div>
@@ -703,6 +737,12 @@ onBeforeUnmount(() => {
   min-width: 0;
   padding: var(--space-lg);
   min-height: calc(100vh - 56px);
+}
+
+.uipro-content.is-noscroll {
+  overflow: hidden;
+  height: calc(100vh - 56px);
+  min-height: 0;
 }
 
 .uipro-content.is-fullbleed {
