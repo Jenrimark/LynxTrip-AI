@@ -1,0 +1,31 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: lynxtrip-backend
+
+  datasource:
+    url: jdbc:h2:mem:lynxtrip;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  jwt:
+    # 生产环境请用 256-bit 以上随机密钥（Base64 或原始字符串均可）
+    secret: ${JWT_SECRET:dev-only-change-me}
+    issuer: ${JWT_ISSUER:lynxtrip}

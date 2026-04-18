@@ -1,0 +1,22 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/.mvn/wrapper/maven-wrapper.properties
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env files
+.env
+backend/.env
+frontend/.env
+backend/src/main/resources/application-local.yml

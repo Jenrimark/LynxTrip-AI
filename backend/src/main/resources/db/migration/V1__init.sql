@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS demo_ping (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  message VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO demo_ping(message) VALUES ('hello lynxtrip');
+

@@ -1,0 +1,27 @@
+$brand: #ff8839;
+$brand-hover: #ff7a1a;
+$brand-light: #ffd4b3;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+  background: #fff;
+}
+
+a {
+  color: $brand;
+}
+
+.el-button--primary {
+  --el-color-primary: #{$brand};
+  --el-color-primary-light-3: #ff9d5c;
+  --el-color-primary-light-5: #ffb07a;
+  --el-color-primary-light-7: #{$brand-light};
+  --el-color-primary-dark-2: #{$brand-hover};
+}
+
