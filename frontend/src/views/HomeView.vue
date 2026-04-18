@@ -1,113 +1,127 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import axios from 'axios'
+import { ref } from 'vue'
+import bgUrl from '../assets/background.png'
+import sloganUrl from '../assets/signal.png'
+import searchLogoUrl from '../assets/search-logo.png'
 
-const status = ref('未检测')
-const detail = ref(null)
-const loading = ref(false)
-
-async function checkHealth() {
-  loading.value = true
-  status.value = '检测中...'
-  detail.value = null
-
-  try {
-    const { data } = await axios.get('/api/health')
-    status.value = '后端已连通'
-    detail.value = data
-  } catch (e) {
-    status.value = '后端未连通（请先启动后端）'
-    detail.value = {
-      message: e?.message ?? String(e),
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(checkHealth)
+const tripDays = ref('1')
+const dayOptions = ['1', '2', '3', '4', '5', '7', '10']
 </script>
 
 <template>
-  <div class="page">
-    <div class="card">
-      <div class="title">LynxTrip 本地启动检查</div>
-
-      <el-alert
-        :title="status"
-        type="info"
-        :closable="false"
-        show-icon
-        class="alert"
-      />
-
-      <div class="actions">
-        <el-button type="primary" :loading="loading" @click="checkHealth">
-          重新检测后端
-        </el-button>
+  <div class="home">
+    <section class="home__hero" :style="{ backgroundImage: `url(${bgUrl})` }">
+      <div class="home__center">
+        <div class="home__stack">
+          <img class="home__slogan" :src="sloganUrl" alt="灵犀旅行 Slogan" />
+          <div class="home__searchCard" role="search">
+            <div class="home__searchRow">
+              <el-input class="home__input" placeholder="无需等待，旅途就在脚下" size="large" clearable />
+            <el-select v-model="tripDays" class="home__days" placeholder="天数" size="large">
+              <el-option v-for="day in dayOptions" :key="day" :label="`${day}天`" :value="day" />
+            </el-select>
+            <button class="home__btn" type="button" aria-label="搜索">
+              <img class="home__btnIcon" :src="searchLogoUrl" alt="" aria-hidden="true" />
+            </button>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <el-divider />
-
-      <div class="mono">
-        <pre>{{ detail }}</pre>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped lang="scss">
-.page {
-  min-height: 100vh;
+.home {
+  height: calc(100vh - 56px);
+}
+
+.home__hero {
+  position: relative;
+  border-radius: 0;
+  overflow: hidden;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.home__center {
+  position: relative;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg) 0;
+}
+
+.home__stack {
+  width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: #fffaf5;
+  gap: 26px;
+  transform: translateY(-34px);
 }
 
-.card {
-  width: min(920px, 100%);
-  border: 1px solid #ffe3cf;
+.home__slogan {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  margin-bottom: 0;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.18));
+}
+
+.home__searchCard {
+  width: min(395px, 100%);
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 16px;
-  padding: 20px;
-  background: #ffffff;
+  padding: 14px;
+  backdrop-filter: blur(12px);
 }
 
-.title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #222;
-  margin-bottom: 12px;
+.home__searchRow {
+  display: grid;
+  grid-template-columns: 1fr 110px 52px;
+  gap: var(--space-sm);
+  align-items: center;
 }
 
-.alert {
-  margin: 12px 0;
+.home__days {
+  width: 110px;
 }
 
-.actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 12px;
+.home__btn {
+  width: 52px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  min-height: 40px;
+  cursor: pointer;
 }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
-  font-size: 13px;
-  color: #333;
-  background: #fff7f1;
-  border: 1px solid #ffe3cf;
-  border-radius: 12px;
-  padding: 12px;
-  overflow: auto;
-  max-height: 360px;
+.home__btn:focus-visible {
+  outline: 2px solid rgba(255, 136, 57, 0.28);
+  outline-offset: 2px;
 }
 
-pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+.home__btnIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .home__searchRow {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
 
