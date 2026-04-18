@@ -352,7 +352,7 @@ onMounted(() => {
   height: 100vh;
   overflow: hidden;
   padding: 0;
-  background: linear-gradient(180deg, var(--lynx-brand), #ff9d5c);
+  background: var(--lynx-brand);
   border-right: 1px solid rgba(255, 255, 255, 0.18);
   transition:
     width 180ms ease,
@@ -484,7 +484,7 @@ onMounted(() => {
   bottom: 0;
   z-index: 2;
   padding: var(--space-md) var(--space-sm) var(--space-md) var(--space-sm);
-  background: linear-gradient(180deg, rgba(255, 157, 92, 0), rgba(255, 136, 57, 0.82));
+  background: var(--lynx-brand);
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(10px);
 }
