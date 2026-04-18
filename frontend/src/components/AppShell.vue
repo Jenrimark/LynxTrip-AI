@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import logoUrl from '../assets/logo2.png'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,6 +17,45 @@ const sidebarCollapsed = ref(false)
 const SIDEBAR_STORAGE_KEY = 'lynxtrip.sidebar.collapsed'
 
 const isFullBleed = computed(() => active.value === 'home' || active.value === 'create-trip')
+const isMulticityOpen = ref(false)
+const multicityForm = ref({
+  title: '',
+  description: '',
+  city: '',
+  days: '4',
+  styleMix: {
+    red: 34,
+    green: 33,
+    ancient: 33,
+  },
+  interests: [],
+})
+const interestOptions = [
+  '历史文化',
+  '城市漫游',
+  '户外探险',
+  '亲子研学',
+  '运动健康',
+  '红色教育',
+  '自然风光',
+  '美食探店',
+  '购物消费',
+  '艺术美学',
+  '乡村田园',
+]
+const ratioPreview = computed(() => {
+  const red = Number(multicityForm.value.styleMix.red) || 0
+  const green = Number(multicityForm.value.styleMix.green) || 0
+  const ancient = Number(multicityForm.value.styleMix.ancient) || 0
+  const total = red + green + ancient
+  if (total <= 0) return { red: 34, green: 33, ancient: 33, total: 0 }
+  return {
+    red: (red / total) * 100,
+    green: (green / total) * 100,
+    ancient: (ancient / total) * 100,
+    total,
+  }
+})
 
 async function checkHealth() {
   try {
@@ -41,6 +81,29 @@ function toggleSidebar() {
   }
 }
 
+function openMulticityModal() {
+  isMulticityOpen.value = true
+}
+
+function closeMulticityModal() {
+  isMulticityOpen.value = false
+}
+
+function submitMulticity() {
+  closeMulticityModal()
+  go('create-trip')
+}
+
+function rangeStyle(value) {
+  return { '--ratio': `${Number(value) || 0}%` }
+}
+
+function handleEscClose(event) {
+  if (event.key === 'Escape' && isMulticityOpen.value) {
+    closeMulticityModal()
+  }
+}
+
 onMounted(checkHealth)
 
 onMounted(() => {
@@ -51,6 +114,14 @@ onMounted(() => {
     // ignore
   }
 })
+
+onMounted(() => {
+  window.addEventListener('keydown', handleEscClose)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscClose)
+})
 </script>
 
 <template>
@@ -59,7 +130,7 @@ onMounted(() => {
       <aside class="uipro-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
         <div class="uipro-sidebar__brand">
           <button class="uipro-logo" type="button" @click="go('home')" aria-label="返回首页">
-            <span class="uipro-logo__mark" aria-hidden="true" />
+            <img class="uipro-logo__img" :src="logoUrl" alt="灵犀旅行 logo" />
             <span class="uipro-logo__text">灵犀旅行</span>
           </button>
         </div>
@@ -222,7 +293,10 @@ onMounted(() => {
           <div class="uipro-topbar__right">
             <el-tag :type="healthTagType" effect="light" round>{{ healthText }}</el-tag>
             <el-button size="small" type="primary" @click="checkHealth">刷新</el-button>
-            <el-button size="small" type="primary" plain>Multi - City</el-button>
+            <el-button class="uipro-multicity" size="small" @click="openMulticityModal">
+              <span>Multi - City</span>
+              <span class="uipro-multicity__caret" aria-hidden="true">▼</span>
+            </el-button>
           </div>
         </header>
 
@@ -230,6 +304,95 @@ onMounted(() => {
           <slot />
         </main>
       </section>
+
+      <div v-if="isMulticityOpen" class="multicity-modal-mask" @click="closeMulticityModal" />
+      <aside v-if="isMulticityOpen" class="multicity-modal" role="dialog" aria-modal="true" aria-label="创建您的行程">
+        <div class="multicity-modal__header">
+          <span>创建您的行程</span>
+        </div>
+        <button class="multicity-modal-close" type="button" aria-label="关闭" @click="closeMulticityModal">
+          ×
+        </button>
+
+        <div class="multicity-modal-content">
+          <form class="multicity-form" @submit.prevent="submitMulticity">
+            <div class="multicity-field">
+              <label for="project-name">标题</label>
+              <input id="project-name" v-model="multicityForm.title" autocomplete="off" placeholder="请输入行程标题" />
+            </div>
+
+            <div class="multicity-field">
+              <label for="project-desc">行程描述</label>
+              <textarea
+                id="project-desc"
+                v-model="multicityForm.description"
+                maxlength="500"
+                rows="4"
+                placeholder="请描述您理想的旅行，包括任何您想包含的具体活动或体验。您提供的细节越多，您的行程将越个性化！"
+              />
+            </div>
+
+            <div class="multicity-row">
+              <div class="multicity-field">
+                <label for="project-city">目的地城市</label>
+                <input id="project-city" v-model="multicityForm.city" placeholder="例如：韶山" />
+              </div>
+              <div class="multicity-field">
+                <label for="project-days">旅游天数</label>
+                <select id="project-days" v-model="multicityForm.days">
+                  <option value="2">2天</option>
+                  <option value="3">3天</option>
+                  <option value="4">4天</option>
+                  <option value="5">5天</option>
+                  <option value="7">7天</option>
+                </select>
+              </div>
+            </div>
+
+            <section class="multicity-section">
+              <h4>红绿古三色倾向</h4>
+              <p class="multicity-section__hint">红色=红色征程/党建相关，绿色=自然生态，古色=古韵建筑/历史人文（预览条会自动归一）。</p>
+              <div class="multicity-ratio-card">
+                <div class="multicity-ratio-row">
+                  <label>红色征程</label>
+                  <input v-model.number="multicityForm.styleMix.red" :style="rangeStyle(multicityForm.styleMix.red)" type="range" min="0" max="100" />
+                  <span>{{ multicityForm.styleMix.red }}%</span>
+                </div>
+                <div class="multicity-ratio-row">
+                  <label>绿色生态</label>
+                  <input v-model.number="multicityForm.styleMix.green" :style="rangeStyle(multicityForm.styleMix.green)" type="range" min="0" max="100" />
+                  <span>{{ multicityForm.styleMix.green }}%</span>
+                </div>
+                <div class="multicity-ratio-row">
+                  <label>古韵人文</label>
+                  <input v-model.number="multicityForm.styleMix.ancient" :style="rangeStyle(multicityForm.styleMix.ancient)" type="range" min="0" max="100" />
+                  <span>{{ multicityForm.styleMix.ancient }}%</span>
+                </div>
+                <div class="multicity-ratio-preview">
+                  <i :style="{ width: `${ratioPreview.red}%` }" class="is-red" />
+                  <i :style="{ width: `${ratioPreview.green}%` }" class="is-green" />
+                  <i :style="{ width: `${ratioPreview.ancient}%` }" class="is-ancient" />
+                </div>
+                <p class="multicity-ratio-note">当前输入总和：{{ ratioPreview.total }}（预览条已自动归一）</p>
+              </div>
+            </section>
+
+            <section class="multicity-section">
+              <h4>兴趣（可选）</h4>
+              <div class="multicity-interest-grid">
+                <label v-for="interest in interestOptions" :key="interest" class="multicity-interest-item">
+                  <input v-model="multicityForm.interests" :value="interest" type="checkbox" />
+                  <span>{{ interest }}</span>
+                </label>
+              </div>
+            </section>
+
+            <div class="multicity-actions">
+              <button type="submit" class="create-button">创建</button>
+            </div>
+          </form>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
@@ -267,6 +430,44 @@ onMounted(() => {
   gap: var(--space-sm);
 }
 
+.uipro-multicity {
+  --el-button-bg-color: rgba(248, 78, 60, 1) !important;
+  --el-button-border-color: rgba(248, 78, 60, 1) !important;
+  --el-button-text-color: #ffffff !important;
+  --el-button-hover-bg-color: rgba(232, 70, 52, 1) !important;
+  --el-button-hover-border-color: rgba(232, 70, 52, 1) !important;
+  --el-button-active-bg-color: rgba(248, 78, 60, 1) !important;
+  --el-button-active-border-color: rgba(248, 78, 60, 1) !important;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 400;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 16px;
+  height: 40px;
+}
+
+.uipro-multicity,
+.uipro-multicity:hover,
+.uipro-multicity:focus,
+.uipro-multicity:active {
+  color: #fff !important;
+}
+
+.uipro-multicity :deep(span) {
+  color: #fff !important;
+}
+
+.uipro-multicity__caret {
+  margin-left: 6px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 400;
+}
+
 .uipro-ico {
   width: 20px;
   height: 20px;
@@ -296,28 +497,32 @@ onMounted(() => {
 }
 
 .uipro-logo {
+  width: 100%;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-weight: 900;
+  font-size: 28px;
   cursor: pointer;
   user-select: none;
   border: 0;
-  padding: 0;
+  padding: 10px 8px;
   background: transparent;
-  color: inherit;
+  color: #fff;
+  justify-content: center;
 }
 
-.uipro-logo__mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(180deg, var(--lynx-brand), var(--lynx-brand-hover));
-  box-shadow: 0 0 0 4px rgba(255, 136, 57, 0.16);
+.uipro-logo__img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 0;
+  background: transparent;
 }
 
 .uipro-logo__text {
-  letter-spacing: 0.2px;
+  letter-spacing: 1.2px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
 }
 
 .uipro-search {
@@ -383,9 +588,9 @@ onMounted(() => {
 }
 
 .uipro-sidebar__brand {
-  padding: var(--space-sm) 8px 6px 8px;
+  padding: 18px 10px 12px 10px;
   background: var(--lynx-brand);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
 }
 
 .uipro-create__btn {
@@ -397,8 +602,8 @@ onMounted(() => {
   --el-button-bg-color: rgba(255, 255, 255, 0.92);
   --el-button-border-color: rgba(255, 255, 255, 0.55);
   border-radius: 14px;
-  height: 48px;
-  font-size: 20px;
+  height: 54px;
+  font-size: 22px;
   font-weight: 800;
   transition: filter 180ms ease, background-color 180ms ease, border-color 180ms ease;
 }
@@ -511,9 +716,344 @@ onMounted(() => {
   padding: 4px;
 }
 
+.multicity-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 107, 157, 0.08);
+  z-index: 1000;
+  transition: background 0.2s;
+}
+
+.multicity-modal {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 40vw;
+  min-width: 340px;
+  max-width: 480px;
+  background: #fff;
+  box-shadow: -4px 0 32px rgba(255, 107, 157, 0.12);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 24px 24px 24px;
+  border-radius: 16px 0 0 16px;
+  animation: slideInRight 0.28s ease;
+  color: #7a3a1d;
+  font-size: 14px;
+}
+
+.multicity-modal__header {
+  background: rgba(255, 136, 57, 1);
+  height: 56px;
+  border-radius: 16px 0 0 0;
+  display: flex;
+  align-items: center;
+  padding-left: 32px;
+  margin: -32px -24px 0 -24px;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.multicity-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 136, 57, 1);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.08);
+  transition: background 0.2s;
+}
+
+.multicity-modal-close:hover {
+  background: rgba(248, 78, 60, 1);
+}
+
+.multicity-modal-content {
+  overflow-y: auto;
+  max-height: 80vh;
+  padding: 0 18px 28px 18px;
+  margin-top: 30px;
+}
+
+.multicity-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.multicity-field label {
+  color: rgba(255, 136, 57, 1);
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.multicity-field input,
+.multicity-field textarea,
+.multicity-field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #ffc0d5;
+  border-radius: 8px;
+  font-size: 14px;
+  background-color: #fff;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.multicity-field input:focus,
+.multicity-field textarea:focus,
+.multicity-field select:focus {
+  border-color: rgba(255, 136, 57, 1);
+  box-shadow: 0 0 0 3px rgba(255, 136, 57, 0.18);
+}
+
+.multicity-row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 12px;
+}
+
+.multicity-section h4 {
+  margin: 4px 0 8px 0;
+  color: rgba(255, 136, 57, 1);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.multicity-section__hint {
+  margin: 0 0 10px 0;
+  color: #b07a5a;
+  font-size: 13px;
+}
+
+.multicity-ratio-card {
+  border: 2px solid #ffc0d5;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fffafc;
+}
+
+.multicity-ratio-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 52px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.multicity-ratio-row label {
+  color: #ff6a3d;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.multicity-ratio-row span {
+  color: #ff6a3d;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.multicity-ratio-row input[type='range'] {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  border-radius: 999px;
+  background: transparent;
+  accent-color: #ff8839;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.multicity-ratio-row input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #ff8839 0%, #ff8839 var(--ratio), #ffd7c1 var(--ratio), #ffd7c1 100%);
+}
+
+.multicity-ratio-row input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #ff8839;
+  box-shadow: 0 2px 8px rgba(255, 136, 57, 0.35);
+  cursor: pointer;
+}
+
+.multicity-ratio-row input[type='range']::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #ffd7c1;
+}
+
+.multicity-ratio-row input[type='range']::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #ff8839;
+}
+
+.multicity-ratio-row input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #ff8839;
+  box-shadow: 0 2px 8px rgba(255, 136, 57, 0.35);
+  cursor: pointer;
+}
+
+.multicity-ratio-preview {
+  margin-top: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  height: 14px;
+  background: #ffe7ef;
+}
+
+.multicity-ratio-preview i {
+  display: block;
+  height: 100%;
+}
+
+.multicity-ratio-preview .is-red {
+  background: #f0513e;
+}
+
+.multicity-ratio-preview .is-green {
+  background: #1fba62;
+}
+
+.multicity-ratio-preview .is-ancient {
+  background: #915122;
+}
+
+.multicity-ratio-note {
+  margin: 8px 0 0 0;
+  color: #a97456;
+  font-size: 12px;
+}
+
+.multicity-interest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 22px;
+}
+
+.multicity-interest-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #ff7a2a;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.multicity-interest-item input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 2px solid rgba(255, 136, 57, 0.55);
+  border-radius: 4px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.multicity-interest-item input[type='checkbox']:checked {
+  background: #ff8839;
+  border-color: #ff8839;
+}
+
+.multicity-interest-item input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: 3px solid #fff;
+  border-bottom: 3px solid #fff;
+  transform: translateY(-1px) rotate(-45deg);
+  pointer-events: none;
+}
+
+.multicity-actions {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.create-button {
+  background-color: rgba(255, 136, 57, 1);
+  color: #fff;
+  border: none;
+  padding: 12px 25px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  transition: all 0.3s;
+  min-width: 140px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: normal;
+  box-sizing: border-box;
+  appearance: none;
+}
+
+.create-button:hover {
+  background-color: #e84393;
+  transform: translateY(-2px);
+}
+
+@keyframes slideInRight {
+  from {
+    right: -40vw;
+    opacity: 0;
+  }
+  to {
+    right: 0;
+    opacity: 1;
+  }
+}
+
 @media (max-width: 980px) {
   .uipro-search {
     width: min(360px, 44vw);
+  }
+
+  .multicity-modal {
+    width: min(92vw, 480px);
+    min-width: 0;
+  }
+
+  .multicity-row {
+    grid-template-columns: 1fr;
+  }
+
+  .multicity-interest-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
