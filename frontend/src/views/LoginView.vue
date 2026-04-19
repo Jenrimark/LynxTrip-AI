@@ -284,6 +284,14 @@ $login-muted: #475569;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.6);
+  }
 }
 
 .login__hero-inner {

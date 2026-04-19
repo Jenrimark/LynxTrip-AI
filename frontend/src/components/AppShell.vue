@@ -218,6 +218,12 @@ onMounted(checkHealth)
 onMounted(refreshAuth)
 watch(() => route.fullPath, refreshAuth)
 
+watch(() => route.name, (name) => {
+  if (name === 'login') {
+    sidebarCollapsed.value = true
+  }
+})
+
 onMounted(() => {
   try {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
