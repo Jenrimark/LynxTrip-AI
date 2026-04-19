@@ -283,13 +283,29 @@ export function isLoggedIn() {
   return n !== SESSION_LOGGED_OUT
 }
 
-export function loginWithPassword(yonghuming, mima) {
+/** 登录用手机号：只保留数字；支持 +86 前缀 */
+function normalizePhone(raw) {
+  let digits = String(raw ?? '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/-/g, '')
+    .replace(/\D/g, '')
+  if (digits.startsWith('86') && digits.length === 13) digits = digits.slice(2)
+  return digits
+}
+
+/**
+ * 手机号 + 密码登录（按 `lianxidianhua` 匹配）
+ * @param {string} phoneRaw 手机号（可含空格、横线）
+ * @param {string} mima 密码
+ */
+export function loginWithPassword(phoneRaw, mima) {
   const db = loadDb()
-  const name = String(yonghuming ?? '').trim()
+  const phone = normalizePhone(phoneRaw)
   const pass = String(mima ?? '')
-  if (!name || !pass) return { ok: false, message: '请输入用户名和密码' }
-  const u = db.tables.yonghu.find((x) => String(x.yonghuming).trim() === name && String(x.mima) === pass)
-  if (!u) return { ok: false, message: '用户名或密码错误' }
+  if (!phone || !pass) return { ok: false, message: '请输入手机号和密码' }
+  const u = db.tables.yonghu.find((x) => normalizePhone(x.lianxidianhua) === phone && String(x.mima) === pass)
+  if (!u) return { ok: false, message: '手机号或密码错误' }
   setCurrentUserId(u.id)
   return { ok: true }
 }
@@ -314,11 +330,16 @@ function allocateUserId(db) {
   return id
 }
 
-export function registerUser({ yonghuming, mima, xingming, lianxidianhua, xingbie }) {
-  const name = String(yonghuming ?? '').trim()
-  if (!name) return null
+/**
+ * 注册：手机号唯一；`yonghuming` 使用规范化手机号以兼容现有表结构
+ * @param {{ phone: string, mima: string, xingming?: string, xingbie?: string }} p
+ */
+export function registerUser({ phone, mima, xingming, xingbie }) {
+  const normalized = normalizePhone(phone)
+  if (!normalized) return null
   const dbCheck = loadDb()
-  if (dbCheck.tables.yonghu.some((x) => String(x.yonghuming).trim() === name)) return null
+  if (dbCheck.tables.yonghu.some((x) => normalizePhone(x.lianxidianhua) === normalized)) return null
+  if (dbCheck.tables.yonghu.some((x) => String(x.yonghuming).trim() === normalized)) return null
   let newId = null
   withDb((db) => {
     const id = allocateUserId(db)
@@ -326,12 +347,12 @@ export function registerUser({ yonghuming, mima, xingming, lianxidianhua, xingbi
     db.tables.yonghu.push({
       id,
       addtime: nowTs(),
-      yonghuming: name || `user${formatUserIdDisplay(id)}`,
+      yonghuming: normalized,
       mima: mima || '123456',
       xingming: xingming || '',
       touxiang: '',
       xingbie: xingbie || '—',
-      lianxidianhua: lianxidianhua || '',
+      lianxidianhua: normalized,
       money: 0,
       shimingrenzheng: '未认证',
     })

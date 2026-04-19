@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 import { getCurrentUserId, getUserById, isLoggedIn } from '../services/lynxDb'
 import logoUrl from '../assets/logo2.png'
 
@@ -12,6 +13,8 @@ const active = computed(() => String(route.name ?? 'home'))
 
 const healthText = ref('后端：未检测')
 const healthOk = ref(false)
+/** 失败时的详细原因，悬停在状态标签上可见 */
+const healthDetail = ref('')
 const healthTagType = computed(() => (healthOk.value ? 'success' : 'warning'))
 
 const sidebarCollapsed = ref(false)
@@ -66,14 +69,90 @@ const ratioPreview = computed(() => {
   }
 })
 
+const HEALTH_SERVICE_ID = 'lynxtrip-backend'
+
+const DB_KIND_LABEL = {
+  h2: 'H2',
+  mysql: 'MySQL',
+  unknown: '未知',
+}
+
+function formatDbKind(kind) {
+  if (kind == null || kind === '') return DB_KIND_LABEL.unknown
+  return DB_KIND_LABEL[kind] ?? String(kind)
+}
+
+function applyHealthFailure(text, detail = '') {
+  healthOk.value = false
+  healthText.value = text
+  healthDetail.value = detail
+}
+
 async function checkHealth() {
+  healthDetail.value = ''
   try {
-    const { data } = await axios.get('/api/health')
-    healthOk.value = true
-    healthText.value = `后端：已连通（${data?.service ?? 'service'}）`
-  } catch {
-    healthOk.value = false
-    healthText.value = '后端：未连通'
+    const { data, status } = await axios.get('/api/health', {
+      timeout: 8000,
+      params: { _t: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      validateStatus: (s) => s === 200,
+    })
+    const baseValid =
+      status === 200 &&
+      data &&
+      data.ok === true &&
+      typeof data.service === 'string' &&
+      data.service === HEALTH_SERVICE_ID
+    if (!baseValid) {
+      applyHealthFailure(
+        '后端：响应异常',
+        '健康接口返回格式不符合预期（ok / service 字段）',
+      )
+      return
+    }
+
+    const db = data.database
+    if (!db || typeof db.ok !== 'boolean') {
+      healthText.value = `后端：已连通（${data.service}）· 数据库：未报告（请重新编译并启动后端）`
+      healthOk.value = true
+      return
+    }
+
+    const kind = typeof db.kind === 'string' ? formatDbKind(db.kind) : DB_KIND_LABEL.unknown
+    const dbLine = db.ok ? `数据库：已连通（${kind}）` : `数据库：异常（${kind}）`
+    healthText.value = `后端：已连通（${data.service}）· ${dbLine}`
+    healthOk.value = db.ok === true
+  } catch (e) {
+    if (axios.isAxiosError(e)) {
+      const st = e.response?.status
+      const body = e.response?.data
+      const detail = [e.message, st != null ? `HTTP ${st}` : '', typeof body === 'string' ? body.slice(0, 200) : '']
+        .filter(Boolean)
+        .join(' · ')
+      if (e.code === 'ECONNABORTED') {
+        applyHealthFailure('后端：未连通（超时）', detail)
+      } else if (!e.response) {
+        applyHealthFailure(
+          '后端：未连通（连不上，请确认已在 8080 启动且用 npm run dev 走代理）',
+          detail,
+        )
+      } else if (st === 502 || st === 503) {
+        applyHealthFailure('后端：未连通（Vite 代理访问 8080 失败）', detail)
+      } else if (st === 404) {
+        applyHealthFailure('后端：未连通（无 /api/health）', detail)
+      } else if (st === 200 && typeof body === 'string' && /<!DOCTYPE|html/i.test(body)) {
+        applyHealthFailure(
+          '后端：未连通（收到网页而非接口，请用开发服务器并配置 /api 代理）',
+          detail,
+        )
+      } else if (st != null && st !== 200) {
+        applyHealthFailure(`后端：未连通（HTTP ${st}）`, detail)
+      } else {
+        applyHealthFailure('后端：未连通（响应无法解析为 JSON）', detail)
+      }
+      return
+    }
+    applyHealthFailure('后端：未连通', e?.message ?? '')
   }
 }
 
@@ -96,6 +175,7 @@ function refreshAuth() {
 
 function goMe() {
   if (!isLoggedIn()) {
+    ElMessage.warning('请先登录后使用个人中心')
     router.push({ name: 'login', query: { redirect: '/me' } })
     return
   }
@@ -325,7 +405,7 @@ onBeforeUnmount(() => {
           <div class="uipro-topbar__right">
             <span v-if="loggedIn" class="uipro-authName" :title="authLabel">{{ authLabel }}</span>
             <el-button v-else size="small" type="primary" plain @click="go('login')">登录</el-button>
-            <el-tag :type="healthTagType" effect="light" round>{{ healthText }}</el-tag>
+            <el-tag :type="healthTagType" effect="light" round :title="healthDetail || undefined">{{ healthText }}</el-tag>
             <el-button size="small" type="primary" @click="checkHealth">刷新</el-button>
             <el-button class="uipro-multicity" size="small" @click="openMulticityModal">
               <span>多城市</span>

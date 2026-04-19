@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { isLoggedIn } from '../services/lynxDb'
 import HomeView from '../views/HomeView.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
 import RoutesView from '../views/RoutesView.vue'
@@ -32,6 +33,30 @@ const router = createRouter({
     { path: '/me', name: 'me', component: MeView },
     { path: '/login', name: 'login', component: LoginView },
   ],
+})
+
+/** 未登录仅可浏览：旅游路线、资讯、光影拾记、产品介绍；登录页始终可进 */
+const GUEST_ROUTE_NAMES = new Set(['routes', 'news', 'gallery', 'product'])
+
+router.beforeEach((to, _from, next) => {
+  if (to.name === 'login') {
+    next()
+    return
+  }
+  if (isLoggedIn()) {
+    next()
+    return
+  }
+  const name = String(to.name ?? '')
+  if (name === 'home' || to.path === '/') {
+    next({ path: '/routes', replace: true })
+    return
+  }
+  if (GUEST_ROUTE_NAMES.has(name)) {
+    next()
+    return
+  }
+  next({ name: 'login', query: { redirect: to.fullPath } })
 })
 
 export default router

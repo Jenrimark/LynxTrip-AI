@@ -1,7 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { requireLogin } from '../utils/requireAuth'
 import { addGalleryItem, listGallery, listStoreup } from '../services/lynxDb'
+
+const router = useRouter()
 
 const keyword = ref('')
 const isAddOpen = ref(false)
@@ -32,10 +36,12 @@ const filtered = computed(() => {
 const storeups = computed(() => listStoreup())
 
 function openAdd() {
+  if (!requireLogin(router, { message: '新增拾记需先登录', redirect: router.currentRoute.value.fullPath })) return
   isAddOpen.value = true
 }
 
 function submit() {
+  if (!requireLogin(router, { message: '请先登录后再提交', redirect: router.currentRoute.value.fullPath })) return
   if (!form.value.photoUrl?.trim()) {
     ElMessage.warning('请先填写图片链接（photoUrl）')
     return
@@ -48,6 +54,7 @@ function submit() {
 }
 
 function quickFromStoreup(row) {
+  if (!requireLogin(router, { message: '从收藏生成拾记需先登录', redirect: router.currentRoute.value.fullPath })) return
   addGalleryItem({
     title: row.name,
     photoUrl: row.picture,

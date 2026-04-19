@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { requireLogin } from '../utils/requireAuth'
 import {
   bumpRouteClick,
   listCategories,
@@ -9,6 +11,8 @@ import {
   listStoreup,
   upsertCartItem,
 } from '../services/lynxDb'
+
+const router = useRouter()
 
 const tab = ref('lvyouxianlu')
 const keyword = ref('')
@@ -60,6 +64,7 @@ const sorted = computed(() => {
 })
 
 function openDetail(row) {
+  if (!requireLogin(router, { message: '查看路线详情请先登录', redirect: router.currentRoute.value.fullPath })) return
   active.value = row
   drawerOpen.value = true
   bumpRouteClick(tab.value, row.id)
@@ -77,6 +82,7 @@ function isFav(row) {
 }
 
 function toggleFav(row) {
+  if (!requireLogin(router, { message: '收藏功能需登录后使用', redirect: router.currentRoute.value.fullPath })) return
   toggleStoreup({
     tablename: tab.value,
     refid: row.id,
@@ -88,6 +94,7 @@ function toggleFav(row) {
 }
 
 function addToCart(row) {
+  if (!requireLogin(router, { message: '加入购物车需先登录', redirect: router.currentRoute.value.fullPath })) return
   upsertCartItem({ tablename: tab.value, good: row })
   ElMessage.success('已加入购物车')
 }

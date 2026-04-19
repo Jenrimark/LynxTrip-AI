@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { requireLogin } from '../utils/requireAuth'
 import { listNews } from '../services/lynxDb'
+
+const router = useRouter()
 
 const keyword = ref('')
 const drawerOpen = ref(false)
@@ -21,6 +25,7 @@ const filtered = computed(() => {
 })
 
 function openDetail(row) {
+  if (!requireLogin(router, { message: '阅读全文需先登录', redirect: router.currentRoute.value.fullPath })) return
   active.value = row
   drawerOpen.value = true
 }

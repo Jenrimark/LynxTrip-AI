@@ -210,7 +210,13 @@ const counts = computed(() => {
 .aboutHero__mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, rgba(2, 6, 23, 0.62), rgba(2, 6, 23, 0.18));
+  z-index: 1;
+  pointer-events: none;
+  /* 与左→右主渐变叠加顶/底压暗，避免亮部背景上白字发虚 */
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.58) 0%, transparent 38%),
+    linear-gradient(0deg, rgba(2, 6, 23, 0.48) 0%, transparent 36%),
+    linear-gradient(90deg, rgba(2, 6, 23, 0.82) 0%, rgba(2, 6, 23, 0.38) 52%, rgba(2, 6, 23, 0.14) 100%);
 }
 .aboutHero__content {
   position: relative;

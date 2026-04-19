@@ -41,7 +41,8 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 当你准备好 MySQL 8 后：
 
 - **你需要做**：创建数据库（例如 `lynxtrip`），并准备账号/密码。
-- **然后后端启动时**：带上 profile `mysql`，并配置环境变量：
+- **推荐**：在仓库根目录 `cp .env.example .env`，填好 `SPRING_PROFILES_ACTIVE=mysql` 与 `MYSQL_*`；后端启动时会自动加载根目录 `.env`（无需再 `source .env`）。
+- **或**：启动前手动导出环境变量：
 
 ```bash
 export SPRING_PROFILES_ACTIVE=mysql
