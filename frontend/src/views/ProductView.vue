@@ -216,7 +216,7 @@ const counts = computed(() => {
   background:
     linear-gradient(180deg, rgba(2, 6, 23, 0.58) 0%, transparent 38%),
     linear-gradient(0deg, rgba(2, 6, 23, 0.48) 0%, transparent 36%),
-    linear-gradient(90deg, rgba(2, 6, 23, 0.82) 0%, rgba(2, 6, 23, 0.38) 52%, rgba(2, 6, 23, 0.14) 100%);
+    linear-gradient(90deg, rgba(2, 6, 23, 0.60) 0%, rgba(2, 6, 23, 0.38) 52%, rgba(2, 6, 23, 0.14) 100%);
 }
 .aboutHero__content {
   position: relative;
