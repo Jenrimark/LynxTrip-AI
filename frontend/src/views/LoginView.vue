@@ -9,8 +9,8 @@ import logoUrl from '../assets/logo2.png'
 const route = useRoute()
 const router = useRouter()
 
-const loginForm = ref({ phone: '', mima: '' })
-const regForm = ref({ phone: '', mima: '', mima2: '', xingming: '', xingbie: '男' })
+const loginForm = ref({ account: '', mima: '' })
+const regForm = ref({ account: '', mima: '', mima2: '', xingming: '', xingbie: '男' })
 
 function normalizePhoneDigits(raw) {
   let d = String(raw ?? '').replace(/\D/g, '')
@@ -18,15 +18,19 @@ function normalizePhoneDigits(raw) {
   return d
 }
 
-function isValidCnMobile(raw) {
-  return /^1\d{10}$/.test(normalizePhoneDigits(raw))
+function isValidAccount(raw) {
+  const val = String(raw ?? '').trim()
+  // 手机号或用户名（2-20位字母数字下划线）
+  if (/^1\d{10}$/.test(normalizePhoneDigits(raw))) return true
+  if (/^[a-zA-Z][a-zA-Z0-9_]{1,19}$/.test(val)) return true
+  return false
 }
 const showRegister = ref(false)
 /** 注册流程：1 账号与安全，2 个人资料 */
 const regStep = ref(1)
 
 const panelSubtitle = computed(() =>
-  showRegister.value ? '创建账号，保存行程与收藏' : '使用手机号与密码进入灵犀旅行'
+  showRegister.value ? '创建账号，保存行程与收藏' : '使用手机号/用户名与密码进入灵犀旅行'
 )
 
 watch(showRegister, () => {
@@ -44,15 +48,12 @@ onMounted(() => {
 })
 
 function submitLogin() {
-  if (!normalizePhoneDigits(loginForm.value.phone) || !loginForm.value.mima) {
-    ElMessage.warning('请填写手机号与密码')
+  const account = String(loginForm.value.account ?? '').trim()
+  if (!account || !loginForm.value.mima) {
+    ElMessage.warning('请填写账号与密码')
     return
   }
-  if (!isValidCnMobile(loginForm.value.phone)) {
-    ElMessage.warning('请输入正确的 11 位中国大陆手机号')
-    return
-  }
-  const res = loginWithPassword(loginForm.value.phone, loginForm.value.mima)
+  const res = loginWithPassword(account, loginForm.value.mima)
   if (!res.ok) {
     ElMessage.error(res.message)
     return
@@ -62,12 +63,13 @@ function submitLogin() {
 }
 
 function nextRegisterStep() {
-  if (!normalizePhoneDigits(regForm.value.phone) || !regForm.value.mima) {
-    ElMessage.warning('请填写手机号与密码')
+  const account = String(regForm.value.account ?? '').trim()
+  if (!account || !regForm.value.mima) {
+    ElMessage.warning('请填写账号与密码')
     return
   }
-  if (!isValidCnMobile(regForm.value.phone)) {
-    ElMessage.warning('请输入正确的 11 位中国大陆手机号')
+  if (!isValidAccount(regForm.value.account)) {
+    ElMessage.warning('请输入正确的 11 位手机号或以字母开头的用户名（2-20位字母数字下划线）')
     return
   }
   if (regForm.value.mima !== regForm.value.mima2) {
@@ -83,12 +85,13 @@ function prevRegisterStep() {
 
 function submitRegister() {
   if (regStep.value !== 2) return
-  if (!normalizePhoneDigits(regForm.value.phone) || !regForm.value.mima) {
-    ElMessage.warning('请填写手机号与密码')
+  const account = String(regForm.value.account ?? '').trim()
+  if (!account || !regForm.value.mima) {
+    ElMessage.warning('请填写账号与密码')
     return
   }
-  if (!isValidCnMobile(regForm.value.phone)) {
-    ElMessage.warning('请输入正确的 11 位中国大陆手机号')
+  if (!isValidAccount(regForm.value.account)) {
+    ElMessage.warning('请输入正确的 11 位手机号或以字母开头的用户名（2-20位字母数字下划线）')
     return
   }
   if (regForm.value.mima !== regForm.value.mima2) {
@@ -96,13 +99,13 @@ function submitRegister() {
     return
   }
   const id = registerUser({
-    phone: regForm.value.phone,
+    account: regForm.value.account,
     mima: regForm.value.mima,
     xingming: regForm.value.xingming?.trim() || '',
     xingbie: regForm.value.xingbie || '—',
   })
   if (id == null) {
-    ElMessage.error('注册失败，该手机号可能已注册')
+    ElMessage.error('注册失败，该账号可能已注册')
     return
   }
   ElMessage.success('注册成功，已自动登录')
@@ -183,8 +186,8 @@ function submitRegister() {
           </header>
 
           <el-form v-if="!showRegister" label-position="top" class="login__form" @submit.prevent="submitLogin">
-            <el-form-item label="手机号">
-              <el-input v-model="loginForm.phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="请输入 11 位手机号" size="large" class="login__input" />
+            <el-form-item label="手机号/用户名">
+              <el-input v-model="loginForm.account" autocomplete="username" placeholder="请输入手机号或用户名" size="large" class="login__input" />
             </el-form-item>
             <el-form-item label="密码">
               <el-input v-model="loginForm.mima" type="password" show-password autocomplete="current-password" placeholder="请输入密码" size="large" class="login__input" />
@@ -209,8 +212,8 @@ function submitRegister() {
             </el-steps>
 
             <div v-show="regStep === 1" class="login__reg-panel" role="region" aria-label="注册第一步：账号与安全">
-              <el-form-item label="手机号">
-                <el-input v-model="regForm.phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="请输入 11 位手机号" size="large" class="login__input" />
+              <el-form-item label="手机号/用户名">
+                <el-input v-model="regForm.account" autocomplete="username" placeholder="请输入手机号或用户名（字母开头）" size="large" class="login__input" />
               </el-form-item>
               <el-form-item label="密码">
                 <el-input v-model="regForm.mima" type="password" show-password autocomplete="new-password" placeholder="请输入密码" size="large" class="login__input" />

@@ -295,17 +295,26 @@ function normalizePhone(raw) {
 }
 
 /**
- * 手机号 + 密码登录（按 `lianxidianhua` 匹配）
- * @param {string} phoneRaw 手机号（可含空格、横线）
+ * 手机号/用户名 + 密码登录
+ * @param {string} accountRaw 手机号或用户名（可含空格、横线）
  * @param {string} mima 密码
  */
-export function loginWithPassword(phoneRaw, mima) {
+export function loginWithPassword(accountRaw, mima) {
   const db = loadDb()
-  const phone = normalizePhone(phoneRaw)
+  const account = String(accountRaw ?? '').trim()
   const pass = String(mima ?? '')
-  if (!phone || !pass) return { ok: false, message: '请输入手机号和密码' }
-  const u = db.tables.yonghu.find((x) => normalizePhone(x.lianxidianhua) === phone && String(x.mima) === pass)
-  if (!u) return { ok: false, message: '手机号或密码错误' }
+  if (!account || !pass) return { ok: false, message: '请输入账号和密码' }
+  // 尝试作为手机号匹配
+  const phone = normalizePhone(accountRaw)
+  let u = null
+  if (phone && /^1\d{10}$/.test(phone)) {
+    u = db.tables.yonghu.find((x) => normalizePhone(x.lianxidianhua) === phone && String(x.mima) === pass)
+  }
+  // 如果手机号未匹配到，尝试作为用户名匹配
+  if (!u) {
+    u = db.tables.yonghu.find((x) => String(x.yonghuming).trim() === account && String(x.mima) === pass)
+  }
+  if (!u) return { ok: false, message: '账号或密码错误' }
   setCurrentUserId(u.id)
   return { ok: true }
 }
@@ -331,15 +340,19 @@ function allocateUserId(db) {
 }
 
 /**
- * 注册：手机号唯一；`yonghuming` 使用规范化手机号以兼容现有表结构
- * @param {{ phone: string, mima: string, xingming?: string, xingbie?: string }} p
+ * Register: support phone or username
+ * @param {{ account: string, mima: string, xingming?: string, xingbie?: string }} p
  */
-export function registerUser({ phone, mima, xingming, xingbie }) {
-  const normalized = normalizePhone(phone)
-  if (!normalized) return null
+export function registerUser({ account, mima, xingming, xingbie }) {
+  const acc = String(account ?? '').trim()
+  if (!acc) return null
   const dbCheck = loadDb()
-  if (dbCheck.tables.yonghu.some((x) => normalizePhone(x.lianxidianhua) === normalized)) return null
-  if (dbCheck.tables.yonghu.some((x) => String(x.yonghuming).trim() === normalized)) return null
+  // Check if phone or username already exists
+  const phone = normalizePhone(acc)
+  if (phone && /^1\d{10}$/.test(phone)) {
+    if (dbCheck.tables.yonghu.some((x) => normalizePhone(x.lianxidianhua) === phone)) return null
+  }
+  if (dbCheck.tables.yonghu.some((x) => String(x.yonghuming).trim() === acc)) return null
   let newId = null
   withDb((db) => {
     const id = allocateUserId(db)
@@ -347,14 +360,14 @@ export function registerUser({ phone, mima, xingming, xingbie }) {
     db.tables.yonghu.push({
       id,
       addtime: nowTs(),
-      yonghuming: normalized,
+      yonghuming: acc,
       mima: mima || '123456',
       xingming: xingming || '',
       touxiang: '',
-      xingbie: xingbie || '—',
-      lianxidianhua: normalized,
+      xingbie: xingbie || '---',
+      lianxidianhua: phone && /^1\d{10}$/.test(phone) ? phone : '',
       money: 0,
-      shimingrenzheng: '未认证',
+      shimingrenzheng: 'Not certified',
     })
     return db
   })
