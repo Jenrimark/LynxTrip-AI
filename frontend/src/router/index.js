@@ -6,12 +6,15 @@ import RoutesView from '../views/RoutesView.vue'
 import NewsView from '../views/NewsView.vue'
 import GalleryView from '../views/GalleryView.vue'
 import CartView from '../views/CartView.vue'
-import AiTripView from '../views/AiTripView.vue'
 import AiQaView from '../views/AiQaView.vue'
 import ProductView from '../views/ProductView.vue'
 import SupportView from '../views/SupportView.vue'
 import MeView from '../views/MeView.vue'
 import LoginView from '../views/LoginView.vue'
+import ShanheStoreView from '../views/ShanheStoreView.vue'
+import MyItineraryView from '../views/MyItineraryView.vue'
+import MyItineraryHubView from '../views/MyItineraryHubView.vue'
+import MyMapView from '../views/MyMapView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,8 +28,12 @@ const router = createRouter({
     { path: '/routes', name: 'routes', component: RoutesView },
     { path: '/news', name: 'news', component: NewsView },
     { path: '/gallery', name: 'gallery', component: GalleryView },
+    { path: '/shanhe-store', name: 'shanhe-store', component: ShanheStoreView },
     { path: '/cart', name: 'cart', component: CartView },
-    { path: '/ai-trip', name: 'ai-trip', component: AiTripView },
+    { path: '/ai-trip', redirect: '/my-itinerary/workspace' },
+    { path: '/my-itinerary', name: 'my-itinerary', component: MyItineraryHubView },
+    { path: '/my-itinerary/workspace', name: 'my-itinerary-workspace', component: MyItineraryView },
+    { path: '/my-map', name: 'my-map', component: MyMapView },
     { path: '/ai-qa', name: 'ai-qa', component: AiQaView },
     { path: '/product', name: 'product', component: ProductView },
     { path: '/support', name: 'support', component: SupportView },
@@ -35,8 +42,8 @@ const router = createRouter({
   ],
 })
 
-/** 未登录仅可浏览：旅游路线、资讯、光影拾记、产品介绍；登录页始终可进 */
-const GUEST_ROUTE_NAMES = new Set(['routes', 'news', 'gallery', 'product'])
+/** 未登录仅可浏览：主题简旅、资讯、光影拾记、产品介绍；登录页始终可进 */
+const GUEST_ROUTE_NAMES = new Set(['routes', 'news', 'gallery', 'product', 'shanhe-store', 'my-itinerary', 'my-map'])
 
 router.beforeEach((to, _from, next) => {
   if (to.name === 'login') {

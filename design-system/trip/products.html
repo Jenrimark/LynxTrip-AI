@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>沿线特产与文创</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #f5f8ff;
+      font-family: "微软雅黑", Arial, sans-serif;
+    }
+    body {
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .section-title {
+      font-weight: bold;
+      color: rgba(255,136,57,1.00);
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .product-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      overflow: hidden;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .product-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .product-image {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+    }
+    .product-info {
+      padding: 15px;
+    }
+    .product-name {
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    .product-location {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+    .product-desc {
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .product-price {
+      color: #ff6b3d;
+      font-weight: bold;
+      font-size: 1.1rem;
+    }
+    .product-tag {
+      display: inline-block;
+      background: #e6f7ff;
+      color: #1890ff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      margin-right: 5px;
+    }
+    .product-tag.organic {
+      background: #f6ffed;
+      color: #52c41a;
+    }
+    .product-tag.handmade {
+      background: #fff7e6;
+      color: #fa8c16;
+    }
+    .product-tag.limited {
+      background: #fff0f6;
+      color: #eb2f96;
+    }
+    .info-block {
+      background: #e6f0ff;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .info-block strong {
+      color: rgba(255,136,57,1.00);
+    }
+    @media (max-width: 768px) {
+      .product-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 480px) {
+      .product-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 官方认证提示 -->
+  <div style="text-align: center; padding: 14px 16px; background: linear-gradient(135deg, #fff5f7 0%, #ffe5ec 100%); border-radius: 10px; margin-bottom: 16px; border: 1px solid #ffc0d5;">
+    <span style="color: rgba(255,136,57,1.00); font-size: 13px; font-weight: 500;">所售商品均为官方认证正品，来自品牌官方旗舰店正规渠道，授权可查，保证全新正品，杜绝假冒伪劣。</span>
+  </div>
+
+  <div class="info-block">
+    <strong>十堰助农特产与文创</strong>：十堰地区物产丰富，拥有众多优质农产品和特色文创。灵犀帮你收集了武当山、竹山县和郧阳区的特色产品，支持当地农户和手工艺人，带您体验十堰的味道与文化。
+  </div>
+
+  <div class="section-title">武当山特色产品</div>
+  <div class="product-grid">
+    <div class="product-card">
+      <img src="../../img/1.jpg" class="product-image" alt="武当道茶">
+      <div class="product-info">
+        <div class="product-name">武当道茶</div>
+        <div class="product-location">产地：武当山紫霄宫附近</div>
+        <div class="product-desc">武当道茶是道教圣地武当山的特产，茶叶色泽翠绿，香气高雅，滋味甘醇。</div>
+        <div>
+          <span class="product-tag organic">有机</span>
+          <span class="product-tag">名茶</span>
+        </div>
+        <div class="product-price">¥128/盒</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/2.jpg" class="product-image" alt="武当黄精酒">
+      <div class="product-info">
+        <div class="product-name">武当黄精酒</div>
+        <div class="product-location">产地：武当山金顶</div>
+        <div class="product-desc">采用武当山野生黄精与优质高粱酿制，具有滋补养生功效，口感醇厚。</div>
+        <div>
+          <span class="product-tag">养生</span>
+          <span class="product-tag limited">限量</span>
+        </div>
+        <div class="product-price">¥168/瓶</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/3.jpg" class="product-image" alt="武当太极剑">
+      <div class="product-info">
+        <div class="product-name">武当太极剑</div>
+        <div class="product-location">产地：武当山太子坡</div>
+        <div class="product-desc">由武当山传统工艺制作的太极剑，既是实用的武术器具，也是精美的收藏品。</div>
+        <div>
+          <span class="product-tag handmade">手工</span>
+          <span class="product-tag">文创</span>
+        </div>
+        <div class="product-price">¥298/把</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">竹山县特色产品</div>
+  <div class="product-grid">
+    <div class="product-card">
+      <img src="../../img/4.jpg" class="product-image" alt="竹山柑橘">
+      <div class="product-info">
+        <div class="product-name">竹山柑橘</div>
+        <div class="product-location">产地：竹山县柑橘基地</div>
+        <div class="product-desc">竹山柑橘色泽鲜艳，果肉饱满多汁，甜酸适中，富含维生素C。</div>
+        <div>
+          <span class="product-tag organic">有机</span>
+          <span class="product-tag">时令</span>
+        </div>
+        <div class="product-price">¥68/5kg</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/5.jpg" class="product-image" alt="郧阳红薯粉">
+      <div class="product-info">
+        <div class="product-name">郧阳红薯粉</div>
+        <div class="product-location">产地：竹山县官渡镇</div>
+        <div class="product-desc">采用当地优质红薯制作，口感筋道，清香可口，是制作凉拌粉的上佳选择。</div>
+        <div>
+          <span class="product-tag">传统</span>
+          <span class="product-tag">美食</span>
+        </div>
+        <div class="product-price">¥35/kg</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/6.jpg" class="product-image" alt="竹山竹编">
+      <div class="product-info">
+        <div class="product-name">竹山竹编</div>
+        <div class="product-location">产地：竹山县民歌村</div>
+        <div class="product-desc">竹山竹编是当地传统手工艺，采用当地优质竹材，编织成各种实用与装饰兼具的器物。</div>
+        <div>
+          <span class="product-tag handmade">手工</span>
+          <span class="product-tag">非遗</span>
+        </div>
+        <div class="product-price">¥88起</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">郧阳区特色产品</div>
+  <div class="product-grid">
+    <div class="product-card">
+      <img src="../../img/7.jpg" class="product-image" alt="郧阳香菇">
+      <div class="product-info">
+        <div class="product-name">郧阳香菇</div>
+        <div class="product-location">产地：郧阳区青龙山</div>
+        <div class="product-desc">郧阳香菇菌盖肥厚，香气浓郁，营养丰富，是烹饪和煲汤的上佳食材。</div>
+        <div>
+          <span class="product-tag organic">有机</span>
+          <span class="product-tag">绿色</span>
+        </div>
+        <div class="product-price">¥58/500g</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/8.jpg" class="product-image" alt="恐龙蛋化石复制品">
+      <div class="product-info">
+        <div class="product-name">恐龙蛋化石复制品</div>
+        <div class="product-location">产地：郧阳区恐龙蛋化石群</div>
+        <div class="product-desc">根据郧阳区恐龙蛋化石群出土的真实化石制作的复制品，是极具科普价值的文创产品。</div>
+        <div>
+          <span class="product-tag">文创</span>
+          <span class="product-tag">科普</span>
+        </div>
+        <div class="product-price">¥120/个</div>
+      </div>
+    </div>
+    
+    <div class="product-card">
+      <img src="../../img/9.jpg" class="product-image" alt="郧阳核桃">
+      <div class="product-info">
+        <div class="product-name">郧阳核桃</div>
+        <div class="product-location">产地：郧阳区山区</div>
+        <div class="product-desc">郧阳核桃壳薄肉厚，营养丰富，口感香脆，是当地特色干果。</div>
+        <div>
+          <span class="product-tag organic">有机</span>
+          <span class="product-tag">零添加</span>
+        </div>
+        <div class="product-price">¥45/500g</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 页面加载完成后通知父页面调整iframe高度
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.parent && window.parent.document) {
+        var height = document.body.scrollHeight;
+        var iframe = window.parent.document.getElementById('iframe-products');
+        if (iframe) {
+          iframe.style.height = height + 'px';
+        }
+      }
+    });
+  </script>
+</body>
+</html>

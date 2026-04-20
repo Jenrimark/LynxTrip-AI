@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listRoutes, saveTrip, listTrips, upsertCartItem } from '../services/lynxDb'
 
@@ -37,12 +38,15 @@ const form = ref({
 })
 
 const accordion = ref(['personalize'])
+const route = useRoute()
 
 const result = ref(null)
 const history = ref([])
+const activeItineraryDay = ref(1)
 
 onMounted(() => {
   history.value = listTrips()
+  hydrateFromRouteQuery()
 })
 
 const normalizedRatios = computed(() => {
@@ -184,6 +188,7 @@ function generate() {
   }
 
   result.value = plan
+  activeItineraryDay.value = 1
   saveTrip({ title, payload: plan })
   history.value = listTrips()
   ElMessage.success('已生成并保存到本地 trips')
@@ -199,11 +204,98 @@ function addToCart(rec) {
   ElMessage.success('已加入购物车')
 }
 
+const itineraryDays = computed(() => {
+  const plan = result.value
+  if (!plan) return []
+  const totalDays = Math.max(1, Number(plan.days || 1))
+  const picks = Array.isArray(plan.recommended) ? plan.recommended : []
+  const slots = ['09:00', '11:30', '14:30', '17:00']
+  return Array.from({ length: totalDays }, (_, dayIndex) => {
+    const dayNo = dayIndex + 1
+    const dayActivities = picks
+      .filter((_, i) => i % totalDays === dayIndex)
+      .map((item, idx) => ({
+        ...item,
+        time: slots[idx % slots.length],
+        note: `${item.from || '出发地'} → ${item.to || '目的地'} · ${item.traffic || '交通待定'}`,
+      }))
+    return {
+      dayNo,
+      title: `第${dayNo}天`,
+      activities: dayActivities,
+    }
+  })
+})
+
+const currentItineraryDay = computed(() => {
+  if (!itineraryDays.value.length) return null
+  return itineraryDays.value.find((d) => d.dayNo === activeItineraryDay.value) || itineraryDays.value[0]
+})
+
+const budgetOverview = computed(() => {
+  const plan = result.value
+  if (!plan) return null
+  const perPerson = Number(plan.budget || 0)
+  const people = Number(plan.people || 1)
+  const total = perPerson * people
+  return { perPerson, people, total }
+})
+
+function copyPlanText() {
+  if (!result.value) return
+  const lines = [`${result.value.title}`, `预算：¥${budgetOverview.value?.total || 0}`]
+  itineraryDays.value.forEach((day) => {
+    lines.push(day.title)
+    day.activities.forEach((a) => lines.push(`- ${a.time} ${a.name}（${a.note}）`))
+  })
+  navigator.clipboard
+    ?.writeText(lines.join('\n'))
+    .then(() => ElMessage.success('已复制行程文案'))
+    .catch(() => ElMessage.warning('复制失败，请手动复制'))
+}
+
+function hydrateFromRouteQuery() {
+  const q = route.query || {}
+  const departure = String(q.departure || '').trim()
+  const destination = String(q.destination || '').trim()
+  const days = Number(q.days || 0)
+  if (departure) form.value.departure = departure
+  if (destination) form.value.destination = destination
+  if (Number.isFinite(days) && days > 0) form.value.days = Math.min(15, Math.max(1, days))
+
+  if (String(q.mode || '') === 'multi') {
+    const cities = String(q.cities || '')
+      .split('|')
+      .map((x) => x.trim())
+      .filter(Boolean)
+    const dayList = String(q.days || '')
+      .split('|')
+      .map((x) => Number(x) || 1)
+    if (cities.length) {
+      form.value.departure = cities[0] || form.value.departure
+      form.value.destination = cities[cities.length - 1] || form.value.destination
+      form.value.days = Math.min(15, Math.max(1, dayList.reduce((s, n) => s + n, 0)))
+      form.value.plannerInput = String(q.plannerInput || '')
+      form.value.preference = `多城市路线：${cities.join(' → ')}`
+    }
+  }
+  if (String(q.autogen || '') === '1') {
+    generate()
+  }
+}
+
 watch(
   () => form.value.ratios,
   () => clampRatios(),
   { deep: true },
 )
+
+watch(itineraryDays, (days) => {
+  if (!days.length) return
+  if (!days.some((d) => d.dayNo === activeItineraryDay.value)) {
+    activeItineraryDay.value = days[0].dayNo
+  }
+})
 </script>
 
 <template>
@@ -392,6 +484,9 @@ watch(
                 <span class="pill pill--soft">{{ result.days }}天</span>
                 <span class="pill pill--soft">预算 ≤ ¥{{ result.budget }}</span>
               </div>
+              <div class="resultActions">
+                <el-button size="small" @click="copyPlanText">复制行程文案</el-button>
+              </div>
             </div>
 
             <div class="recGrid">
@@ -426,6 +521,44 @@ watch(
         </div>
       </aside>
     </div>
+
+    <section v-if="result" class="itinerary lynx-card lynx-card--glass">
+      <div class="itinerary__head">
+        <div>
+          <h3 class="itinerary__title lynx-h">每日行程</h3>
+          <p class="itinerary__sub">参考 Aicotravel 的按天阅读体验，结合当前推荐路线自动拆分。</p>
+        </div>
+        <div v-if="budgetOverview" class="budgetPill">
+          总预算 ¥{{ Number(budgetOverview.total || 0).toFixed(0) }}（{{ budgetOverview.people }}人）
+        </div>
+      </div>
+
+      <div class="dayTabs">
+        <button
+          v-for="d in itineraryDays"
+          :key="d.dayNo"
+          type="button"
+          class="dayTab"
+          :class="{ 'is-active': d.dayNo === activeItineraryDay }"
+          @click="activeItineraryDay = d.dayNo"
+        >
+          {{ d.title }}
+        </button>
+      </div>
+
+      <div v-if="currentItineraryDay" class="timeline">
+        <article v-for="a in currentItineraryDay.activities" :key="`${a.tablename}:${a.id}:${a.time}`" class="timelineItem">
+          <div class="timelineItem__time">{{ a.time }}</div>
+          <div class="timelineItem__dot" />
+          <div class="timelineItem__card">
+            <div class="timelineItem__name">{{ a.name }}</div>
+            <div class="timelineItem__meta">{{ a.note }}</div>
+            <div class="timelineItem__meta">预算参考：¥{{ Number(a.price || 0).toFixed(0) }}</div>
+          </div>
+        </article>
+        <div v-if="!currentItineraryDay.activities.length" class="timelineEmpty">当天暂无可分配景点，建议补充更多偏好后重新规划。</div>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -807,6 +940,9 @@ watch(
   border-radius: 14px;
   padding: 12px 14px;
 }
+.resultActions {
+  margin-top: 10px;
+}
 .resultPlanTitle {
   font-weight: 900;
   color: #0f172a;
@@ -939,6 +1075,106 @@ watch(
   font-variant-numeric: tabular-nums;
 }
 
+.itinerary {
+  border-radius: 18px;
+  padding: 16px;
+}
+.itinerary__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.itinerary__title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 18px;
+}
+.itinerary__sub {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+.budgetPill {
+  height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(249, 115, 22, 0.12);
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+}
+.dayTabs {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dayTab {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.88);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dayTab.is-active {
+  border-color: rgba(249, 115, 22, 0.35);
+  background: rgba(249, 115, 22, 0.14);
+  color: #7c2d12;
+}
+.timeline {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.timelineItem {
+  display: grid;
+  grid-template-columns: 52px 16px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.timelineItem__time {
+  color: #f97316;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 8px;
+}
+.timelineItem__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #f97316;
+  margin-top: 10px;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+.timelineItem__card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.timelineItem__name {
+  color: #0f172a;
+  font-weight: 900;
+}
+.timelineItem__meta {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+.timelineEmpty {
+  color: #64748b;
+  font-size: 12px;
+  padding: 8px 0;
+}
+
 @media (max-width: 1200px) {
   .layout {
     grid-template-columns: 1fr;
@@ -962,6 +1198,9 @@ watch(
   }
   .sendArea {
     grid-template-columns: 1fr;
+  }
+  .itinerary__head {
+    flex-direction: column;
   }
   .rec {
     grid-template-columns: 84px 1fr;

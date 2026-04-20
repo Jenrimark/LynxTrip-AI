@@ -1,8 +1,17 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
 import { listNews, listRoutes } from '../services/lynxDb'
 import lingxiLogo from '../../../picturee/LOGO.png'
+
+marked.use({
+  gfm: true,
+  breaks: true,
+})
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 
 const DRAFT_KEY = 'lynxtrip.draft.aiqa.v1'
 
@@ -85,8 +94,37 @@ function escapeHtml(str) {
     .replaceAll("'", '&#039;')
 }
 
+/** 大模型 Markdown → 安全 HTML（列表/标题/加粗等不再露出原始符号） */
+function renderAiMarkdown(src) {
+  const raw = String(src ?? '')
+  try {
+    const html = marked.parse(raw, { async: false })
+    return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })
+  } catch (e) {
+    console.warn('[灵犀] Markdown 解析失败，已退回纯文本', e)
+    return DOMPurify.sanitize(escapeHtml(raw).replace(/\n/g, '<br>'))
+  }
+}
+
 function formatMoney(n) {
   return `¥ ${Number(n || 0).toFixed(0)}`
+}
+
+/** 出行时间展示（避免直接露出 ISO 原始串） */
+function formatTripTime(raw) {
+  if (raw == null || raw === '' || raw === '—') return '—'
+  const s = String(raw)
+  const t = Date.parse(s)
+  if (!Number.isNaN(t)) {
+    return new Date(t).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+  return s.length > 40 ? s.slice(0, 40) + '…' : s
 }
 
 function takeTop(list, n) {
@@ -140,8 +178,6 @@ function buildAnswer(userText, filesText) {
   const wantsPacking = /清单|带什么|准备什么|行前/.test(merged)
 
   const blocks = []
-  blocks.push(`<div class="lx-h">灵犀回答（本地知识）</div>`)
-  blocks.push(`<div class="lx-muted">我会优先从你的数据库内容里找线索（线路/资讯），再给出建议。</div>`)
 
   if (wantsPacking) {
     blocks.push(`
@@ -195,7 +231,7 @@ function buildAnswer(userText, filesText) {
     picked = takeTop(picked, 3)
     blocks.push(`
       <div class="lx-card">
-        <div class="lx-card__hd">匹配到的线路（来自数据库）</div>
+        <div class="lx-card__hd">相关线路</div>
         <div class="lx-grid">
           ${picked
             .map(
@@ -204,8 +240,7 @@ function buildAnswer(userText, filesText) {
                 <div class="lx-route__title">${escapeHtml(r.xianlumingcheng)}</div>
                 <div class="lx-route__meta">${escapeHtml(r.xianlufenlei)} · ${formatMoney(r.price)} · 点击 ${Number(r.clicknum || 0)}</div>
                 <div class="lx-route__meta">${escapeHtml(r.chufadi || '—')} → ${escapeHtml(r.mudedi || '—')} · ${escapeHtml(r.jiaotongfangshi || '—')}</div>
-                <div class="lx-route__meta">出行时间：${escapeHtml(String(r.chuxingshijian || '—'))}</div>
-                <div class="lx-route__meta">表：${r.__table} · ID：${r.id}</div>
+                <div class="lx-route__meta">出行时间：${escapeHtml(formatTripTime(r.chuxingshijian))}</div>
               </div>
             `,
             )
@@ -217,7 +252,7 @@ function buildAnswer(userText, filesText) {
     blocks.push(`
       <div class="lx-card">
         <div class="lx-card__hd">我需要更多线索</div>
-        <div class="lx-muted">你可以补充：目的地/天数/预算/偏好（红绿古比例）/出发地。我会用线路库给出更精确的推荐。</div>
+        <div class="lx-muted">你可以补充：目的地/天数/预算/偏好（红绿古比例）/出发地，方便我更准地推荐。</div>
       </div>
     `)
   }
@@ -268,6 +303,11 @@ async function send(text) {
   if (!t && composer.value.files.length === 0) return
   if (isGenerating.value) return
 
+  if (typingTimer) {
+    clearInterval(typingTimer)
+    typingTimer = null
+  }
+
   await ensureChatMode()
 
   const filesText = composer.value.files.map((f) => `【${f.name}】\n${f.text}`).join('\n\n')
@@ -280,24 +320,117 @@ async function send(text) {
   await nextTick()
   scrollToBottom()
 
-  const fullHtml = buildAnswer(t, filesText)
+  // Get local data as context
+  const { routeHits, newsHits } = searchCorpus([t, filesText].filter(Boolean).join('\n\n'))
 
-  // 打字机效果（仿 lingxi）
   isGenerating.value = true
-  let i = 0
-  const step = 18
-  typingTimer = setInterval(async () => {
-    i += step
-    setAssistantHtml(aiId, fullHtml.slice(0, i) + (i < fullHtml.length ? '<span class="lx-cursor">▋</span>' : ''))
-    await nextTick()
-    scrollToBottom()
-    if (i >= fullHtml.length) {
-      clearInterval(typingTimer)
-      typingTimer = null
-      isGenerating.value = false
-      setAssistantHtml(aiId, fullHtml)
+
+  try {
+    // Call backend AI API
+    const response = await fetch(`${API_BASE}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: t,
+        routeHits: routeHits.map(r => ({
+          id: r.id,
+          xianlumingcheng: r.xianlumingcheng,
+          xianlufenlei: r.xianlufenlei,
+          price: r.price,
+          chufadi: r.chufadi,
+          mudedi: r.mudedi,
+          jiaotongfangshi: r.jiaotongfangshi,
+          jingdianmingcheng: r.jingdianmingcheng,
+          clicknum: r.clicknum
+        })),
+        newsHits: newsHits.map(n => ({
+          id: n.id,
+          title: n.title,
+          introduction: n.introduction,
+          content: n.content
+        })),
+        filesText
+      })
+    })
+
+    const rawText = await response.text()
+    let data = {}
+    try {
+      data = rawText ? JSON.parse(rawText) : {}
+    } catch {
+      console.warn('[灵犀] /api/ai/chat 返回非 JSON', response.status, rawText?.slice?.(0, 200))
     }
-  }, 18)
+
+    if (!response.ok) {
+      console.warn('[灵犀] 接口 HTTP', response.status, data?.content || rawText?.slice?.(0, 300))
+    } else if (data && data.success === false) {
+      console.warn('[灵犀] 未使用大模型（后端返回失败）:', data.content || '(无详情)')
+    }
+
+    if (data.success && data.source === 'ai') {
+      const rawMd = String(data.content ?? '')
+      if (!rawMd.length) {
+        setAssistantHtml(aiId, '<div class="lx-ai-content lx-ai-content--md"></div>')
+        isGenerating.value = false
+      } else {
+        let i = 0
+        const step = 12
+        const runTick = () => {
+          i += step
+          if (i > rawMd.length) i = rawMd.length
+          const slice = rawMd.slice(0, i)
+          const body = renderAiMarkdown(slice)
+          const tail = i < rawMd.length ? '<span class="lx-cursor">▋</span>' : ''
+          setAssistantHtml(aiId, `<div class="lx-ai-content lx-ai-content--md">${body}${tail}</div>`)
+          nextTick(() => scrollToBottom())
+          if (i >= rawMd.length) {
+            if (typingTimer) {
+              clearInterval(typingTimer)
+              typingTimer = null
+            }
+            isGenerating.value = false
+            setAssistantHtml(aiId, `<div class="lx-ai-content lx-ai-content--md">${renderAiMarkdown(rawMd)}</div>`)
+          }
+        }
+        runTick()
+        typingTimer = setInterval(runTick, 18)
+      }
+    } else {
+      // 接口未配置或失败：前端兜底展示
+      const fullHtml = buildAnswer(t, filesText)
+      let i = 0
+      const step = 18
+      typingTimer = setInterval(async () => {
+        i += step
+        setAssistantHtml(aiId, fullHtml.slice(0, i) + (i < fullHtml.length ? '<span class="lx-cursor">▋</span>' : ''))
+        await nextTick()
+        scrollToBottom()
+        if (i >= fullHtml.length) {
+          clearInterval(typingTimer)
+          typingTimer = null
+          isGenerating.value = false
+          setAssistantHtml(aiId, fullHtml)
+        }
+      }, 18)
+    }
+  } catch (err) {
+    console.error('[灵犀] 请求失败（将使用页面兜底）:', err)
+    const fullHtml = buildAnswer(t, filesText)
+    let i = 0
+    const step = 18
+    typingTimer = setInterval(async () => {
+      i += step
+      setAssistantHtml(aiId, fullHtml.slice(0, i) + (i < fullHtml.length ? '<span class="lx-cursor">▋</span>' : ''))
+      await nextTick()
+      scrollToBottom()
+      if (i >= fullHtml.length) {
+        clearInterval(typingTimer)
+        typingTimer = null
+        isGenerating.value = false
+        setAssistantHtml(aiId, fullHtml)
+      }
+    }, 18)
+  }
 }
 
 async function onPickSuggestion(s) {
@@ -335,7 +468,7 @@ async function onFilesChange(e) {
 }
 
 function onKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
     send()
   }
@@ -933,6 +1066,109 @@ onBeforeUnmount(() => {
   overflow: auto;
   font-size: 12px;
   line-height: 1.6;
+}
+.lx-bubble--ai :deep(.lx-ai-content) {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #1a1208;
+  white-space: pre-wrap;
+}
+
+/* 大模型 Markdown 渲染（标题/列表/加粗等为 HTML，不再显示 **、###、- 等原始符号） */
+.lx-bubble--ai :deep(.lx-ai-content--md) {
+  white-space: normal;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md > *:first-child) {
+  margin-top: 0;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md p) {
+  margin: 0 0 0.75em;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md h1),
+.lx-bubble--ai :deep(.lx-ai-content--md h2),
+.lx-bubble--ai :deep(.lx-ai-content--md h3),
+.lx-bubble--ai :deep(.lx-ai-content--md h4) {
+  margin: 0.85em 0 0.45em;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1.35;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md h1) {
+  font-size: 1.25rem;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md h2) {
+  font-size: 1.12rem;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md h3),
+.lx-bubble--ai :deep(.lx-ai-content--md h4) {
+  font-size: 1.02rem;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md ul),
+.lx-bubble--ai :deep(.lx-ai-content--md ol) {
+  margin: 0.4em 0 0.75em;
+  padding-left: 1.35em;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md li) {
+  margin: 0.28em 0;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md ul) {
+  list-style: disc;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md ol) {
+  list-style: decimal;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md blockquote) {
+  margin: 0.5em 0;
+  padding: 0.35em 0 0.35em 0.85em;
+  border-left: 3px solid rgba(234, 120, 40, 0.45);
+  color: #5c4d3d;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md code) {
+  font-size: 0.9em;
+  padding: 0.12em 0.38em;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md pre) {
+  margin: 0.6em 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  overflow: auto;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md pre code) {
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 13px;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md th),
+.lx-bubble--ai :deep(.lx-ai-content--md td) {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 8px 10px;
+  text-align: left;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md th) {
+  background: rgba(255, 248, 243, 0.95);
+  font-weight: 800;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md a) {
+  color: #ea7828;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lx-bubble--ai :deep(.lx-ai-content--md hr) {
+  margin: 0.85em 0;
+  border: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
 }
 .lx-bubble--ai :deep(.lx-cursor) {
   animation: blink 0.7s infinite;

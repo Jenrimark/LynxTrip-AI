@@ -1,0 +1,122 @@
+<style>
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0;
+    padding: 0;
+  }
+  .info-block {
+    margin-bottom: 24px;
+  }
+  .section-title {
+    font-weight: bold;
+    color: rgba(255,136,57,1.00);
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+  }
+  .input, .textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e6cfff;
+    border-radius: 8px;
+    font-size: 16px;
+    background: #f9faff;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+  }
+  .footer-bar {
+    background: #f5f8ff;
+    padding: 16px 0;
+    text-align: right;
+    border-radius: 0 0 16px 16px;
+    margin-top: 24px;
+  }
+  .footer-bar button {
+    background: rgba(255,136,57,1.00);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 32px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-left: 16px;
+  }
+  .footer-bar .danger {
+    background: #ff4d4f;
+  }
+</style>
+<div class="info-block">
+  <div class="section-title">标题</div>
+  <input class="input" type="text" value="想去十堰好久辣！ (NEW)" readonly>
+</div>
+<div class="info-block">
+  <div class="section-title">成员</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:36px;height:36px;border-radius:50%;background:#f3e8ff;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#7c3aed;">吴</div>
+  </div>
+</div>
+<div class="info-block">
+  <div class="section-title">隐私</div>
+  <div style="margin-bottom:12px;">
+    <label style="display:block;background:#fafbfc;border:1.5px solid #e6e6e6;border-radius:10px;padding:14px 18px;margin-bottom:10px;cursor:pointer;">
+      <input type="radio" name="privacy" checked style="margin-right:8px;"> 公开访问
+      <div style="color:#888;font-size:0.97rem;margin-left:26px;">拥有链接的每个人都可以看到此项目。</div>
+    </label>
+    <label style="display:block;background:#fafbfc;border:1.5px solid #e6e6e6;border-radius:10px;padding:14px 18px;cursor:pointer;">
+      <input type="radio" name="privacy" style="margin-right:8px;"> 仅行程成员可见
+      <div style="color:#888;font-size:0.97rem;margin-left:26px;">只有此行程的成员可以访问和编辑。</div>
+    </label>
+  </div>
+</div>
+<div style="background:linear-gradient(90deg,#f5faff,#eaf2ff);border-radius:10px;padding:18px 18px 18px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+  <div>
+    <div style="color:#4f5b76;font-size:1rem;font-weight:bold;margin-bottom:4px;">复制邀请链接 - 授予拥有链接的任何人编辑权限，并共同协作行程！</div>
+    <div style="color:#888;font-size:0.95rem;">拥有邀请链接的用户将成为行程的成员</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;">
+    <button id="copy-link-btn" style="background:#eef2ff;color:#6c63ff;border:none;border-radius:8px;padding:8px 22px;font-size:1rem;cursor:pointer;width:110px;margin-top:0;">复制 →</button>
+    <div id="copy-success" style="display:none;background:#d9f5e3;color:#218a5a;border-radius:8px;padding:8px 22px;font-size:1rem;align-items:center;justify-content:center;width:110px;margin-top:0;">
+      <span style="font-size:1em;margin-right:8px;">✔</span> 已复制!
+    </div>
+  </div>
+</div>
+<div class="footer-bar">
+  <button class="danger">删除行程</button>
+</div>
+
+<script>
+  // 复制按钮功能
+  var inviteLink = window.parent ? window.parent.location.href : window.location.href;
+  document.addEventListener('DOMContentLoaded', function() {
+    var copyBtn = document.getElementById('copy-link-btn');
+    var successTip = document.getElementById('copy-success');
+    if(copyBtn && successTip){
+      copyBtn.addEventListener('click', function() {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(inviteLink).then(function() {
+            copyBtn.style.display = 'none';
+            successTip.style.display = 'flex';
+            setTimeout(function() {
+              successTip.style.display = 'none';
+              copyBtn.style.display = 'inline-block';
+            }, 2000);
+          });
+        } else {
+          var textarea = document.createElement('textarea');
+          textarea.value = inviteLink;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          copyBtn.style.display = 'none';
+          successTip.style.display = 'flex';
+          setTimeout(function() {
+            successTip.style.display = 'none';
+            copyBtn.style.display = 'inline-block';
+          }, 2000);
+        }
+      });
+    }
+  });
+</script>

@@ -36,6 +36,18 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 
 打开浏览器访问 `http://127.0.0.1:5173`，首页会自动请求 `/api/health` 检测后端联通性（通过 Vite 代理转发到 `http://127.0.0.1:8080`）。
 
+如果你要使用“产品页”里的百度地图组件，请在仓库根目录 `.env` 中配置：
+
+```bash
+VITE_BAIDU_MAP_AK=你的百度地图AK
+```
+
+如果你要使用首页城市输入框的“实时地点联想”，还需要配置百度服务端 AK（由后端调用）：
+
+```bash
+BAIDU_MAP_SERVER_AK=你的百度服务端AK
+```
+
 ## 切换到 MySQL（需要你操作数据库）
 
 当你准备好 MySQL 8 后：

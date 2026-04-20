@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>想去十堰好久辣！（NEW）</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f5f8ff;
+      font-family: "微软雅黑", Arial, sans-serif;
+    }
+    .header {
+      background: #e6f0ff;
+      padding: 32px 0 16px 0;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 2rem;
+      color: #333;
+      font-weight: bold;
+    }
+    .header .subtitle {
+      color: #888;
+      margin-top: 8px;
+      font-size: 1.1rem;
+    }
+    .main-card {
+      background: #fff;
+      margin: 32px auto 0 auto;
+      border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      width: 90%;
+      max-width: 900px;
+      padding: 32px 24px 24px 24px;
+      position: relative; /* Keep relative for potential future absolute children */
+    }
+    .tab-bar {
+      display: flex;
+      background: #f5f8ff;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .tab-bar div {
+      flex: 1;
+      text-align: center;
+      padding: 12px 0;
+      cursor: pointer;
+      color: #888;
+      font-weight: bold;
+      border-bottom: 2px solid transparent;
+      background: #f5f8ff;
+      transition: all 0.2s;
+    }
+    .tab-bar .active {
+      color: rgba(255,136,57,1.00);
+      border-bottom: 2px solid rgba(255,136,57,1.00);
+      background: #fff;
+    }
+    .section-title {
+      font-weight: bold;
+      color: rgba(255,136,57,1.00);
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .input, .textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e6cfff;
+      border-radius: 8px;
+      font-size: 16px;
+      background: #f9faff;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    .days {
+      color: rgba(255,136,57,1.00);
+      font-weight: bold;
+      margin-left: 8px;
+    }
+    .info-block {
+      margin-bottom: 24px;
+    }
+    .radio-group {
+      margin-bottom: 16px;
+    }
+    .radio-group label {
+      margin-right: 24px;
+      font-size: 1rem;
+      color: #555;
+    }
+    .footer-bar {
+      background: #f5f8ff;
+      padding: 16px 0;
+      text-align: right;
+      border-radius: 0 0 16px 16px;
+      margin-top: 24px;
+    }
+    .footer-bar button {
+      background: rgba(255,136,57,1.00);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 32px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-left: 16px;
+    }
+    .footer-bar .danger {
+      background: #ff4d4f;
+    }
+    .notice {
+      background: #e6f0ff;
+      color: #888;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+    }
+    .city-info {
+      color: #888;
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+    }
+    .city-info strong {
+      color: #333;
+      font-weight: bold;
+    }
+    .share-row {
+      margin-bottom: 16px;
+    }
+    .share-row label {
+      font-size: 1rem;
+      color: #555;
+      margin-left: 8px;
+    }
+    /* 侧边栏样式调整 */
+    .sidebar {
+      /* 移除绝对定位 */
+      position: static;
+      /* 移除左侧偏移 */
+      left: auto;
+      top: auto;
+
+      /* 使用Flexbox水平居中 */
+      display: flex;
+      flex-direction: row; /* 始终水平排列 */
+      justify-content: center; /* 水平居中 */
+      flex-wrap: wrap; /* 允许换行 */
+      gap: 18px; /* 按钮之间的间距 */
+
+      z-index: 100;
+      background: transparent;
+      margin-bottom: 16px; /* 在侧边栏下方添加一些间距 */
+      /* align-items: center; /* 在水平布局时此属性控制垂直对齐，此处不需要 */
+      width: 100%; /* 让sidebar占据全部宽度以便内容居中 */
+    }
+    .side-btn {
+      background: #fff;
+      border: 1.5px solid #e6cfff;
+      border-radius: 10px;
+      padding: 14px 38px;
+      font-size: 1.1rem;
+      color: #222;
+      cursor: pointer;
+      margin: 0;
+      transition: box-shadow 0.2s, border-color 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .side-btn:hover {
+      border-color: #b39ddb;
+      box-shadow: 0 4px 16px rgba(252,107,157,0.08);
+    }
+    @media (max-width: 900px) {
+      .sidebar {
+        gap: 8px; /* 在小屏幕上减小间距 */
+      }
+      .side-btn {
+        padding: 10px 18px;
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>想去十堰好久辣！ (NEW)</h1>
+    <div class="subtitle" style="margin-top:8px;">ShiYan,  China <span style="font-size:0.95em;">cn</span></div>
+    <div class="days" style="margin-top:4px;">3天</div>
+  </div>
+  <div class="main-card">
+    <!-- 侧边栏按钮组 -->
+    <div class="sidebar">
+      <button id="download-pdf-btn" class="side-btn">下载PDF</button>
+      <button id="copy-link-btn2" class="side-btn">复制链接</button>
+      <!-- <button id="clone-btn" class="side-btn">克隆</button> 这一行删除 -->
+      <button id="find-flight-btn" class="side-btn">查找航班</button>
+      <button id="find-hotel-btn" class="side-btn">查找酒店</button>
+      <button id="local-products-btn" class="side-btn">沿线助农</button>
+    </div>
+    <!-- 下面是原有 main-card 内容 -->
+    <div class="tab-bar" style="margin-bottom:12px;">
+      <div class="active" id="tab-activity">活动</div>
+      <div id="tab-map">地图</div>
+      <div id="tab-edit">编辑</div>
+      <div id="tab-setting">设置</div>
+      <div id="tab-products">特产</div>
+    </div>
+    <!-- 内容区：四个tab分别一个div -->
+    <div id="tab-content-activity">
+      <iframe src="activity.html" frameborder="0" style="width:100%;min-height:200px;" id="iframe-activity"></iframe>
+    </div>
+    <div id="tab-content-map" style="display:none;">
+      <iframe src="map.html" frameborder="0" style="width:100%;min-height:200px;" id="iframe-map"></iframe>
+    </div>
+    <div id="tab-content-edit" style="display:none;">
+      <iframe src="edit.html" frameborder="0" style="width:100%;min-height:200px;" id="iframe-edit"></iframe>
+    </div>
+    <div id="tab-content-setting" style="display:none;">
+      <iframe src="setting.html" frameborder="0" style="width:100%;min-height:200px;" id="iframe-setting"></iframe>
+    </div>
+    <div id="tab-content-products" style="display:none;">
+      <iframe src="products.html" frameborder="0" style="width:100%;min-height:200px;" id="iframe-products"></iframe>
+    </div>
+
+   
+</body>
+<script>
+  var inviteLink = window.location.href;
+
+  document.addEventListener('DOMContentLoaded', function() {
+    
+    // 页面加载时自动点击活动按钮
+    document.getElementById('tab-activity').click();
+    
+    // 新增按钮点击事件
+    document.getElementById('download-pdf-btn').onclick = function() {
+      alert('下载PDF功能待实现');
+    };
+    document.getElementById('copy-link-btn2').onclick = function() {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(inviteLink).then(function() {
+          alert('链接已复制！');
+        });
+      } else {
+        var textarea = document.createElement('textarea');
+        textarea.value = inviteLink;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('链接已复制！');
+      }
+    };
+   
+    document.getElementById('find-flight-btn').onclick = function() {
+      window.open('https://flights.ctrip.com/online/channel/domestic', '_blank');
+    };
+    document.getElementById('find-hotel-btn').onclick = function() {
+      window.open('https://www.ctrip.com/', '_blank');
+    };
+    document.getElementById('local-products-btn').onclick = function() {
+      setActiveTab('tab-products');
+    };
+
+    // Tab 按钮点击事件，切换active样式和内容区
+    function setActiveTab(tabId) {
+      document.querySelectorAll('.tab-bar div').forEach(function(tab) {
+        tab.classList.remove('active');
+      });
+      document.getElementById(tabId).classList.add('active');
+      // 切换内容区
+      document.getElementById('tab-content-activity').style.display = (tabId === 'tab-activity') ? '' : 'none';
+      document.getElementById('tab-content-map').style.display = (tabId === 'tab-map') ? '' : 'none';
+      document.getElementById('tab-content-edit').style.display = (tabId === 'tab-edit') ? '' : 'none';
+      document.getElementById('tab-content-setting').style.display = (tabId === 'tab-setting') ? '' : 'none';
+      document.getElementById('tab-content-products').style.display = (tabId === 'tab-products') ? '' : 'none';
+
+      // 动态调整 iframe 高度
+      var iframeId = '';
+      if(tabId === 'tab-activity') iframeId = 'iframe-activity';
+      if(tabId === 'tab-map') iframeId = 'iframe-map';
+      if(tabId === 'tab-edit') iframeId = 'iframe-edit';
+      if(tabId === 'tab-setting') iframeId = 'iframe-setting';
+      if(tabId === 'tab-products') iframeId = 'iframe-products';
+      if(iframeId) {
+        var iframe = document.getElementById(iframeId);
+        if(iframe) {
+          // 重新加载时也触发高度调整
+          iframe.onload = function() {
+            try {
+              var doc = iframe.contentDocument || iframe.contentWindow.document;
+              iframe.style.height = doc.body.scrollHeight + 'px';
+            } catch(e) {}
+          };
+          // 如果已经加载过，直接调整
+          try {
+            var doc = iframe.contentDocument || iframe.contentWindow.document;
+            iframe.style.height = doc.body.scrollHeight + 'px';
+          } catch(e) {}
+        }
+      }
+    }
+    document.getElementById('tab-activity').onclick = function() {
+      setActiveTab('tab-activity');
+    };
+    document.getElementById('tab-map').onclick = function() {
+      setActiveTab('tab-map');
+    };
+    document.getElementById('tab-edit').onclick = function() {
+      setActiveTab('tab-edit');
+    };
+    document.getElementById('tab-setting').onclick = function() {
+      setActiveTab('tab-setting');
+    };
+    document.getElementById('tab-products').onclick = function() {
+      setActiveTab('tab-products');
+    };
+  });
+</script>
+</body>
+</html>

@@ -26,15 +26,18 @@ const isFullBleed = computed(
     active.value === 'create-trip' ||
     active.value === 'ai-qa' ||
     active.value === 'support' ||
-    active.value === 'login'
+    active.value === 'login' ||
+    active.value === 'my-map'
 )
-const isNoScrollPage = computed(() => active.value === 'ai-qa' || active.value === 'support')
+const isNoScrollPage = computed(() => active.value === 'ai-qa' || active.value === 'support' || active.value === 'my-map')
 const isMulticityOpen = ref(false)
+const multicityCityLoading = ref(false)
+const multicityCityOptions = ref([])
+let multicityCitySuggestTimer = null
 const multicityForm = ref({
   title: '',
   description: '',
-  city: '',
-  days: '4',
+  stops: [{ city: '', days: '4' }],
   styleMix: {
     red: 34,
     green: 33,
@@ -200,8 +203,88 @@ function closeMulticityModal() {
 }
 
 function submitMulticity() {
+  const stops = (multicityForm.value.stops || [])
+    .map((s) => ({ city: String(s.city || '').trim(), days: String(s.days || '').trim() }))
+    .filter((s) => s.city)
+  if (!stops.length) {
+    ElMessage.warning('请至少选择一个城市')
+    return
+  }
+  const cities = stops.map((s) => s.city).join('|')
+  const days = stops.map((s) => s.days || '1').join('|')
+  const plannerText = [multicityForm.value.title, multicityForm.value.description].filter(Boolean).join('；')
   closeMulticityModal()
-  go('create-trip')
+  router.push({
+    name: 'my-itinerary-workspace',
+    query: {
+      mode: 'multi',
+      cities,
+      days,
+      plannerInput: plannerText,
+      autogen: '1',
+    },
+  })
+}
+
+function remoteSearchMulticityCity(queryString) {
+  const q = String(queryString || '').trim()
+  if (!q) {
+    multicityCityOptions.value = []
+    return
+  }
+  if (multicityCitySuggestTimer) clearTimeout(multicityCitySuggestTimer)
+  multicityCitySuggestTimer = setTimeout(async () => {
+    multicityCityLoading.value = true
+    try {
+      const { data } = await axios.get('/api/maps/suggest', {
+        params: { q, region: '全国' },
+        timeout: 8000,
+      })
+      const list = Array.isArray(data?.data) ? data.data : []
+      multicityCityOptions.value = list.map((it, idx) => ({
+        id: `${it?.name || '地点'}-${it?.lng || ''}-${it?.lat || ''}-${idx}`,
+        value: it?.value || it?.name || '',
+        name: it?.name || '',
+        address: it?.address || '',
+        district: it?.district || '',
+      }))
+    } catch {
+      multicityCityOptions.value = []
+    } finally {
+      multicityCityLoading.value = false
+    }
+  }, 220)
+}
+
+function handleMulticityCityChange(value, index) {
+  const stops = multicityForm.value.stops || []
+  if (!stops[index]) return
+  stops[index].city = String(value || '')
+
+  const isLast = index === stops.length - 1
+  if (isLast && stops[index].city.trim()) {
+    stops.push({ city: '', days: '4' })
+  }
+}
+
+function removeMulticityStop(index) {
+  const stops = multicityForm.value.stops || []
+  if (stops.length <= 1) return
+  stops.splice(index, 1)
+}
+
+function normalizeDays(raw) {
+  const text = String(raw ?? '').trim()
+  const matched = text.match(/\d+/)
+  const n = matched ? Number(matched[0]) : Number(text)
+  if (!Number.isFinite(n)) return '1'
+  return String(Math.max(1, Math.floor(n)))
+}
+
+function handleStopDaysChange(value, index) {
+  const stops = multicityForm.value.stops || []
+  if (!stops[index]) return
+  stops[index].days = normalizeDays(value)
 }
 
 function rangeStyle(value) {
@@ -239,6 +322,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscClose)
+  if (multicityCitySuggestTimer) clearTimeout(multicityCitySuggestTimer)
 })
 </script>
 
@@ -262,18 +346,29 @@ onBeforeUnmount(() => {
 
         <div class="uipro-sidebar__scroll" aria-label="侧栏菜单">
           <div class="uipro-group">
-            <div class="uipro-group__label">规划您的旅行</div>
-            <nav class="uipro-nav" aria-label="规划您的旅行">
-              <button class="uipro-item" :class="{ 'is-active': active === 'routes' }" :title="sidebarCollapsed ? '旅游路线' : undefined" @click="go('routes')">
+            <div class="uipro-group__label">旅行内容</div>
+            <nav class="uipro-nav" aria-label="旅行内容">
+              <button class="uipro-item" :class="{ 'is-active': active === 'my-itinerary' }" :title="sidebarCollapsed ? '我的旅行' : undefined" @click="go('my-itinerary')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
                     <path
                       fill="currentColor"
-                      d="M7 2a1 1 0 0 1 1 1v18.17l2.7-2.7a1 1 0 0 1 1.41 0l2.89 2.89V3a1 1 0 1 1 2 0v20a1 1 0 0 1-1.71.71L12 19.41l-5.29 5.3A1 1 0 0 1 5 24V3a1 1 0 0 1 1-1h1Z"
+                      d="M12 2a1 1 0 0 1 1 1v1.06A7 7 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A7 7 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A7 7 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A7 7 0 0 1 11 4.06V3a1 1 0 0 1 1-1Zm0 4a5 5 0 1 0 0 10a5 5 0 0 0 0-10Zm0 2a1 1 0 0 1 1 1v2h2a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
                     />
                   </svg>
                 </span>
-                <span class="uipro-item__label">旅游路线</span>
+                <span class="uipro-item__label">我的旅行</span>
+              </button>
+              <button class="uipro-item" :class="{ 'is-active': active === 'my-map' }" :title="sidebarCollapsed ? '我的地图' : undefined" @click="go('my-map')">
+                <span class="uipro-item__icon" aria-hidden="true">
+                  <svg class="uipro-ico" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M12 2a7 7 0 0 1 7 7c0 4.09-2.7 7.34-6.14 11.47a1.2 1.2 0 0 1-1.72 0C7.7 16.34 5 13.09 5 9a7 7 0 0 1 7-7Zm0 2a5 5 0 0 0-5 5c0 3.3 2.23 6.13 5 9.55c2.77-3.42 5-6.25 5-9.55a5 5 0 0 0-5-5Zm0 2.25A2.75 2.75 0 1 1 9.25 9A2.75 2.75 0 0 1 12 6.25Z"
+                    />
+                  </svg>
+                </span>
+                <span class="uipro-item__label">我的地图</span>
               </button>
               <button class="uipro-item" :class="{ 'is-active': active === 'news' }" :title="sidebarCollapsed ? '旅游资讯' : undefined" @click="go('news')">
                 <span class="uipro-item__icon" aria-hidden="true">
@@ -297,6 +392,34 @@ onBeforeUnmount(() => {
                 </span>
                 <span class="uipro-item__label">光影拾记</span>
               </button>
+            </nav>
+          </div>
+
+          <div class="uipro-group">
+            <div class="uipro-group__label">商城</div>
+            <nav class="uipro-nav" aria-label="商城">
+              <button class="uipro-item" :class="{ 'is-active': active === 'routes' }" :title="sidebarCollapsed ? '主题简旅' : undefined" @click="go('routes')">
+                <span class="uipro-item__icon" aria-hidden="true">
+                  <svg class="uipro-ico" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M7 2a1 1 0 0 1 1 1v18.17l2.7-2.7a1 1 0 0 1 1.41 0l2.89 2.89V3a1 1 0 1 1 2 0v20a1 1 0 0 1-1.71.71L12 19.41l-5.29 5.3A1 1 0 0 1 5 24V3a1 1 0 0 1 1-1h1Z"
+                    />
+                  </svg>
+                </span>
+                <span class="uipro-item__label">主题简旅</span>
+              </button>
+              <button class="uipro-item" :class="{ 'is-active': active === 'shanhe-store' }" :title="sidebarCollapsed ? '山河印记' : undefined" @click="go('shanhe-store')">
+                <span class="uipro-item__icon" aria-hidden="true">
+                  <svg class="uipro-ico" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M12 2l8 4v6c0 5.2-3.4 9.73-8 11c-4.6-1.27-8-5.8-8-11V6l8-4Zm0 2.24L6 7.2V12c0 4.18 2.62 7.84 6 9.15c3.38-1.31 6-4.97 6-9.15V7.2l-6-2.96Zm-1 3.76h2v4h4v2h-6V8Z"
+                    />
+                  </svg>
+                </span>
+                <span class="uipro-item__label">山河印记</span>
+              </button>
               <button class="uipro-item" :class="{ 'is-active': active === 'cart' }" :title="sidebarCollapsed ? '购物车' : undefined" @click="go('cart')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
@@ -314,17 +437,6 @@ onBeforeUnmount(() => {
           <div class="uipro-group">
             <div class="uipro-group__label">AI助手</div>
             <nav class="uipro-nav" aria-label="AI助手">
-              <button class="uipro-item" :class="{ 'is-active': active === 'ai-trip' }" :title="sidebarCollapsed ? 'AI规划行程' : undefined" @click="go('ai-trip')">
-                <span class="uipro-item__icon" aria-hidden="true">
-                  <svg class="uipro-ico" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M12 2a1 1 0 0 1 1 1v1.06A7 7 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A7 7 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A7 7 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A7 7 0 0 1 11 4.06V3a1 1 0 0 1 1-1Zm0 4a5 5 0 1 0 0 10a5 5 0 0 0 0-10Zm0 2a1 1 0 0 1 1 1v2h2a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
-                    />
-                  </svg>
-                </span>
-                <span class="uipro-item__label">AI智能规划</span>
-              </button>
               <button class="uipro-item" :class="{ 'is-active': active === 'ai-qa' }" :title="sidebarCollapsed ? 'AI问答助手' : undefined" @click="go('ai-qa')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
@@ -394,18 +506,6 @@ onBeforeUnmount(() => {
                 />
               </svg>
             </button>
-            <div class="uipro-search">
-              <el-input placeholder="搜索城市" clearable>
-                <template #prefix>
-                  <svg class="uipro-search__icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="currentColor"
-                      d="M10 4a6 6 0 1 1 3.75 10.69l4.28 4.28a1 1 0 0 1-1.42 1.42l-4.28-4.28A6 6 0 0 1 10 4Zm0 2a4 4 0 1 0 0 8a4 4 0 0 0 0-8Z"
-                    />
-                  </svg>
-                </template>
-              </el-input>
-            </div>
           </div>
 
           <div class="uipro-topbar__right">
@@ -452,26 +552,65 @@ onBeforeUnmount(() => {
               />
             </div>
 
-            <div class="multicity-row">
+            <div v-for="(stop, idx) in multicityForm.stops" :key="`stop-${idx}`" class="multicity-row">
               <div class="multicity-field">
-                <label for="project-city">首站城市</label>
-                <input id="project-city" v-model="multicityForm.city" placeholder="例如：十堰" />
+                <label :for="`project-city-${idx}`">{{ idx === 0 ? '首站城市' : `第${idx + 1}站城市` }}</label>
+                <el-select
+                  :id="`project-city-${idx}`"
+                  v-model="stop.city"
+                  class="project-city-select"
+                  size="large"
+                  clearable
+                  filterable
+                  remote
+                  reserve-keyword
+                  default-first-option
+                  :remote-method="remoteSearchMulticityCity"
+                  placeholder="例如：十堰"
+                  :loading="multicityCityLoading"
+                  no-match-text="未找到相关地点"
+                  no-data-text="输入关键词开始检索"
+                  popper-class="home-city-popper"
+                  @change="(value) => handleMulticityCityChange(value, idx)"
+                >
+                  <el-option v-for="item in multicityCityOptions" :key="item.id" :label="item.value" :value="item.value">
+                    <div class="cityOption">
+                      <div class="cityOption__name">{{ item.name || item.value }}</div>
+                      <div class="cityOption__meta">{{ item.address || item.district || '暂无详细地址' }}</div>
+                    </div>
+                  </el-option>
+                </el-select>
               </div>
               <div class="multicity-field">
-                <label for="project-days">旅游天数</label>
-                <select id="project-days" v-model="multicityForm.days">
-                  <option value="2">2天</option>
-                  <option value="3">3天</option>
-                  <option value="4">4天</option>
-                  <option value="5">5天</option>
-                  <option value="7">7天</option>
-                </select>
+                <label :for="`project-days-${idx}`">旅游天数</label>
+                <el-select
+                  :id="`project-days-${idx}`"
+                  v-model="stop.days"
+                  class="project-days-select"
+                  size="large"
+                  filterable
+                  allow-create
+                  default-first-option
+                  reserve-keyword
+                  placeholder="请输入数字"
+                  @change="(value) => handleStopDaysChange(value, idx)"
+                >
+                  <el-option v-for="n in 30" :key="`day-${n}`" :label="String(n)" :value="String(n)" />
+                </el-select>
               </div>
+              <button
+                v-if="multicityForm.stops.length > 1 && idx < multicityForm.stops.length - 1"
+                type="button"
+                class="multicity-stop-remove"
+                @click="removeMulticityStop(idx)"
+              >
+                删除
+              </button>
             </div>
 
             <section class="multicity-section">
               <h4>红绿古三色倾向</h4>
-              <p class="multicity-section__hint">红色=红色征程/研学，绿色=自然生态，古色=古韵人文（预览条会自动归一）。</p>
+              <p class="multicity-section__hint">红色=红色征程/研学，绿色=自然生态，古色=古韵人文。</p>
               <div class="multicity-ratio-card">
                 <div class="multicity-ratio-row">
                   <label>红色征程</label>
@@ -643,17 +782,6 @@ onBeforeUnmount(() => {
 .uipro-logo__text {
   letter-spacing: 1.2px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
-}
-
-.uipro-search {
-  width: min(520px, 46vw);
-  min-width: 220px;
-}
-
-.uipro-search__icon {
-  color: var(--lynx-muted);
-  width: 16px;
-  height: 16px;
 }
 
 .uipro-main {
@@ -851,6 +979,15 @@ onBeforeUnmount(() => {
 }
 
 .multicity-modal {
+  --mc-accent: #ff8839;
+  --mc-accent-strong: #d5563c;
+  --mc-text-main: #0f172a;
+  --mc-text-sub: #64748b;
+  --mc-border-soft: rgba(255, 255, 255, 0.75);
+  --mc-surface: rgba(255, 255, 255, 0.92);
+  --mc-surface-soft: rgba(255, 251, 247, 0.95);
+  --mc-shadow-soft: 0 10px 24px rgba(249, 115, 22, 0.12);
+  --mc-shadow-pop: 0 16px 36px rgba(15, 23, 42, 0.14), 0 6px 16px rgba(249, 115, 22, 0.12);
   position: fixed;
   top: 0;
   right: 0;
@@ -858,20 +995,20 @@ onBeforeUnmount(() => {
   width: 40vw;
   min-width: 340px;
   max-width: 480px;
-  background: #fff;
-  box-shadow: -4px 0 32px rgba(255, 107, 157, 0.12);
+  background: var(--mc-surface);
+  box-shadow: -8px 0 30px rgba(15, 23, 42, 0.12);
   z-index: 1001;
   display: flex;
   flex-direction: column;
   padding: 32px 24px 24px 24px;
   border-radius: 16px 0 0 16px;
   animation: slideInRight 0.28s ease;
-  color: #7a3a1d;
+  color: var(--mc-text-main);
   font-size: 14px;
 }
 
 .multicity-modal__header {
-  background: rgba(255, 136, 57, 1);
+  background: linear-gradient(135deg, var(--mc-accent), #f97316);
   height: 56px;
   border-radius: 16px 0 0 0;
   display: flex;
@@ -887,7 +1024,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: rgba(255, 136, 57, 1);
+  background: var(--mc-accent);
   color: #fff;
   border: none;
   border-radius: 50%;
@@ -898,12 +1035,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.08);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.2);
   transition: background 0.2s;
 }
 
 .multicity-modal-close:hover {
-  background: rgba(248, 78, 60, 1);
+  background: var(--mc-accent-strong);
 }
 
 .multicity-modal-content {
@@ -920,43 +1057,102 @@ onBeforeUnmount(() => {
 }
 
 .multicity-field label {
-  color: rgba(255, 136, 57, 1);
+  color: var(--mc-accent);
   font-size: 14px;
   font-weight: 600;
   display: block;
   margin-bottom: 6px;
 }
 
-.multicity-field input,
-.multicity-field textarea,
-.multicity-field select {
+.multicity-field > input,
+.multicity-field > textarea,
+.multicity-field > select {
   width: 100%;
   padding: 10px 12px;
-  border: 2px solid #ffc0d5;
-  border-radius: 8px;
+  border: 1px solid var(--mc-border-soft);
+  border-radius: 12px;
   font-size: 14px;
-  background-color: #fff;
+  background: var(--mc-surface);
   box-sizing: border-box;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), var(--mc-shadow-soft);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
-.multicity-field input:focus,
-.multicity-field textarea:focus,
-.multicity-field select:focus {
-  border-color: rgba(255, 136, 57, 1);
-  box-shadow: 0 0 0 3px rgba(255, 136, 57, 0.18);
+.multicity-field :deep(.project-city-select),
+.multicity-field :deep(.project-days-select) {
+  width: 100%;
+}
+
+.multicity-field :deep(.project-city-select .el-select__wrapper),
+.multicity-field :deep(.project-days-select .el-select__wrapper) {
+  min-height: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--mc-border-soft);
+  background: var(--mc-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), var(--mc-shadow-soft);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.multicity-field :deep(.project-city-select .el-select__wrapper:hover),
+.multicity-field :deep(.project-days-select .el-select__wrapper:hover),
+.multicity-field :deep(.project-city-select .el-select__wrapper.is-focused) {
+  border-color: color-mix(in srgb, var(--mc-accent) 55%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mc-accent) 16%, transparent),
+    0 10px 24px color-mix(in srgb, var(--mc-accent) 18%, transparent);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.multicity-field :deep(.project-city-select .el-select__wrapper.is-hovering) {
+  border-color: color-mix(in srgb, var(--mc-accent) 42%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 8px 20px color-mix(in srgb, var(--mc-accent) 16%, transparent);
+}
+
+.multicity-field :deep(.project-days-select .el-select__wrapper.is-hovering) {
+  border-color: color-mix(in srgb, var(--mc-accent) 42%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 8px 20px color-mix(in srgb, var(--mc-accent) 16%, transparent);
+}
+
+.multicity-field > input:focus,
+.multicity-field > textarea:focus,
+.multicity-field > select:focus {
+  border-color: var(--mc-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mc-accent) 18%, transparent);
 }
 
 .multicity-row {
   display: grid;
-  grid-template-columns: 1fr 140px;
+  grid-template-columns: 1fr 140px auto;
   gap: 12px;
+  align-items: end;
+}
+
+.multicity-stop-remove {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--mc-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--mc-accent) 10%, white);
+  color: var(--mc-accent-strong);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.multicity-stop-remove:hover {
+  border-color: color-mix(in srgb, var(--mc-accent-strong) 55%, transparent);
+  background: color-mix(in srgb, var(--mc-accent) 16%, white);
 }
 
 .multicity-section h4 {
   margin: 4px 0 8px 0;
-  color: rgba(255, 136, 57, 1);
+  color: var(--mc-accent);
   font-size: 16px;
   line-height: 1.2;
   font-weight: 700;
@@ -964,15 +1160,16 @@ onBeforeUnmount(() => {
 
 .multicity-section__hint {
   margin: 0 0 10px 0;
-  color: #b07a5a;
+  color: var(--mc-text-sub);
   font-size: 13px;
 }
 
 .multicity-ratio-card {
-  border: 2px solid #ffc0d5;
+  border: 1px solid var(--mc-border-soft);
   border-radius: 14px;
   padding: 12px;
-  background: #fffafc;
+  background: var(--mc-surface-soft);
+  box-shadow: var(--mc-shadow-soft);
 }
 
 .multicity-ratio-row {
@@ -984,13 +1181,13 @@ onBeforeUnmount(() => {
 }
 
 .multicity-ratio-row label {
-  color: #ff6a3d;
+  color: var(--mc-accent);
   font-size: 14px;
   font-weight: 600;
 }
 
 .multicity-ratio-row span {
-  color: #ff6a3d;
+  color: var(--mc-accent);
   text-align: right;
   font-size: 14px;
   font-weight: 700;
@@ -1002,7 +1199,7 @@ onBeforeUnmount(() => {
   margin: 0;
   border-radius: 999px;
   background: transparent;
-  accent-color: #ff8839;
+  accent-color: var(--mc-accent);
   -webkit-appearance: none;
   appearance: none;
 }
@@ -1010,7 +1207,7 @@ onBeforeUnmount(() => {
 .multicity-ratio-row input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(to right, #ff8839 0%, #ff8839 var(--ratio), #ffd7c1 var(--ratio), #ffd7c1 100%);
+  background: linear-gradient(to right, var(--mc-accent) 0%, var(--mc-accent) var(--ratio), #ffd7c1 var(--ratio), #ffd7c1 100%);
 }
 
 .multicity-ratio-row input[type='range']::-webkit-slider-thumb {
@@ -1020,8 +1217,8 @@ onBeforeUnmount(() => {
   margin-top: -5px;
   border-radius: 50%;
   border: 2px solid #fff;
-  background: #ff8839;
-  box-shadow: 0 2px 8px rgba(255, 136, 57, 0.35);
+  background: var(--mc-accent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--mc-accent) 35%, transparent);
   cursor: pointer;
 }
 
@@ -1034,7 +1231,7 @@ onBeforeUnmount(() => {
 .multicity-ratio-row input[type='range']::-moz-range-progress {
   height: 4px;
   border-radius: 999px;
-  background: #ff8839;
+  background: var(--mc-accent);
 }
 
 .multicity-ratio-row input[type='range']::-moz-range-thumb {
@@ -1042,8 +1239,8 @@ onBeforeUnmount(() => {
   height: 14px;
   border-radius: 50%;
   border: 2px solid #fff;
-  background: #ff8839;
-  box-shadow: 0 2px 8px rgba(255, 136, 57, 0.35);
+  background: var(--mc-accent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--mc-accent) 35%, transparent);
   cursor: pointer;
 }
 
@@ -1075,7 +1272,7 @@ onBeforeUnmount(() => {
 
 .multicity-ratio-note {
   margin: 8px 0 0 0;
-  color: #a97456;
+  color: var(--mc-text-sub);
   font-size: 12px;
 }
 
@@ -1089,7 +1286,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #ff7a2a;
+  color: var(--mc-accent);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
@@ -1100,7 +1297,7 @@ onBeforeUnmount(() => {
   height: 18px;
   -webkit-appearance: none;
   appearance: none;
-  border: 2px solid rgba(255, 136, 57, 0.55);
+  border: 2px solid color-mix(in srgb, var(--mc-accent) 55%, transparent);
   border-radius: 4px;
   background: #fff;
   display: grid;
@@ -1110,8 +1307,8 @@ onBeforeUnmount(() => {
 }
 
 .multicity-interest-item input[type='checkbox']:checked {
-  background: #ff8839;
-  border-color: #ff8839;
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
 }
 
 .multicity-interest-item input[type='checkbox']:checked::after {
@@ -1130,15 +1327,15 @@ onBeforeUnmount(() => {
 }
 
 .create-button {
-  background-color: rgba(255, 136, 57, 1);
+  background: linear-gradient(135deg, var(--mc-accent), #f59e42);
   color: #fff;
   border: none;
   padding: 12px 25px;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 16px;
   font-weight: 700;
-  transition: all 0.3s;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
   min-width: 140px;
   display: inline-flex;
   align-items: center;
@@ -1146,11 +1343,71 @@ onBeforeUnmount(() => {
   line-height: normal;
   box-sizing: border-box;
   appearance: none;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--mc-accent) 28%, transparent);
 }
 
 .create-button:hover {
-  background-color: #e84393;
+  background: var(--mc-accent-strong);
   transform: translateY(-2px);
+}
+
+.create-button:focus-visible,
+.create-button:active {
+  background: var(--mc-accent-strong);
+}
+
+:global(.home-city-popper) {
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.68) !important;
+  background: rgba(255, 251, 247, 0.95) !important;
+  box-shadow: var(--mc-shadow-pop) !important;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+:global(.home-city-popper .el-select-dropdown__list) {
+  padding: 8px;
+}
+
+:global(.home-city-popper .el-select-dropdown__item) {
+  height: auto;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  color: #1f2937;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+:global(.home-city-popper .el-select-dropdown__item:last-child) {
+  margin-bottom: 0;
+}
+
+:global(.home-city-popper .el-select-dropdown__item.hover),
+:global(.home-city-popper .el-select-dropdown__item:hover) {
+  background: linear-gradient(135deg, rgba(255, 136, 57, 0.16), rgba(56, 189, 248, 0.12));
+  color: #0f172a;
+}
+
+:global(.home-city-popper .el-select-dropdown__item.is-selected) {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(255, 136, 57, 0.16));
+  color: #7c2d12;
+  font-weight: 800;
+}
+
+.multicity-field :deep(.cityOption) {
+  line-height: 1.25;
+}
+
+.multicity-field :deep(.cityOption__name) {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.multicity-field :deep(.cityOption__meta) {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 @keyframes slideInRight {
@@ -1165,10 +1422,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 980px) {
-  .uipro-search {
-    width: min(360px, 44vw);
-  }
-
   .multicity-modal {
     width: min(92vw, 480px);
     min-width: 0;

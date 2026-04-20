@@ -1,13 +1,142 @@
 <script setup>
-import { computed } from 'vue'
-import { listRoutes, listNews } from '../services/lynxDb'
+import { nextTick, onMounted, ref } from 'vue'
 import heroBg from '../assets/background.png'
 import brandLogo from '../assets/logo2.png'
 
-const counts = computed(() => {
-  const routes = listRoutes('lvyouxianlu').length + listRoutes('zuixinxianlu').length
-  const news = listNews().length
-  return { routes, news }
+const BAIDU_MAP_AK = import.meta.env.VITE_BAIDU_MAP_AK || ''
+const mapContainerRef = ref(null)
+const mapReady = ref(false)
+const mapError = ref('')
+let mapInstance = null
+
+const mapPoints = [
+  { name: '武当山', lng: 111.0016, lat: 32.4896 },
+  { name: '丹江口', lng: 111.5138, lat: 32.5409 },
+  { name: '郧阳区', lng: 110.8121, lat: 32.8424 },
+  { name: '竹山县', lng: 110.2307, lat: 32.2254 },
+]
+
+let baiduMapLoader = null
+
+function loadBaiduMapSdk() {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('当前环境不支持地图加载'))
+  }
+  if (window.BMapGL) return Promise.resolve(window.BMapGL)
+  if (baiduMapLoader) return baiduMapLoader
+  if (!BAIDU_MAP_AK) return Promise.reject(new Error('未配置百度地图 AK（VITE_BAIDU_MAP_AK）'))
+
+  baiduMapLoader = new Promise((resolve, reject) => {
+    const timeoutMs = 20000
+    let done = false
+    const cssId = 'lynxtrip-baidu-map-css'
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement('link')
+      link.id = cssId
+      link.rel = 'stylesheet'
+      link.type = 'text/css'
+      link.href = 'https://api.map.baidu.com/res/webgl/10/bmap.css'
+      document.head.appendChild(link)
+    }
+
+    const script = document.createElement('script')
+    script.src = `https://api.map.baidu.com/getscript?type=webgl&v=1.0&ak=${encodeURIComponent(BAIDU_MAP_AK)}&services=`
+    script.async = true
+    const timer = window.setTimeout(() => {
+      if (done) return
+      done = true
+      try {
+        script.remove()
+      } catch {
+        // ignore
+      }
+      reject(new Error('百度地图 SDK 加载超时（请检查网络/AK/浏览器控制台报错）'))
+    }, timeoutMs)
+
+    script.onload = () => {
+      const start = Date.now()
+      const tick = () => {
+        if (done) return
+        if (window.BMapGL) {
+          done = true
+          window.clearTimeout(timer)
+          resolve(window.BMapGL)
+          return
+        }
+        if (Date.now() - start > 10000) {
+          done = true
+          window.clearTimeout(timer)
+          reject(new Error('百度地图 SDK 已加载但未初始化（BMapGL 仍不存在，通常是 Referer 白名单或脚本被拦截）'))
+          return
+        }
+        window.setTimeout(tick, 50)
+      }
+      tick()
+    }
+    script.onerror = () => {
+      if (done) return
+      done = true
+      window.clearTimeout(timer)
+      reject(new Error('百度地图脚本请求失败（可能被网络/安全策略拦截）'))
+    }
+    document.head.appendChild(script)
+  }).catch((err) => {
+    baiduMapLoader = null
+    throw err
+  })
+
+  return baiduMapLoader
+}
+
+async function initBaiduMap() {
+  if (mapInstance || mapReady.value) return
+  if (!mapContainerRef.value) return
+  try {
+    mapError.value = ''
+    const BMapGL = await loadBaiduMapSdk()
+    const map = new BMapGL.Map(mapContainerRef.value)
+    const center = new BMapGL.Point(110.93, 32.84)
+    map.centerAndZoom(center, 8)
+    map.enableScrollWheelZoom(true)
+    map.addControl(new BMapGL.NavigationControl())
+    map.addControl(new BMapGL.ScaleControl())
+
+    mapPoints.forEach((p) => {
+      const point = new BMapGL.Point(p.lng, p.lat)
+      const marker = new BMapGL.Marker(point)
+      map.addOverlay(marker)
+      const label = new BMapGL.Label(p.name, { position: point, offset: new BMapGL.Size(16, -10) })
+      label.setStyle({
+        color: '#0f172a',
+        borderColor: '#e2e8f0',
+        borderRadius: '8px',
+        padding: '2px 6px',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        fontSize: '12px',
+      })
+      map.addOverlay(label)
+    })
+    mapInstance = map
+    mapReady.value = true
+  } catch (err) {
+    mapReady.value = false
+    mapError.value = err instanceof Error ? err.message : '百度地图初始化失败'
+  }
+}
+
+async function retryMap() {
+  mapError.value = ''
+  await initBaiduMap()
+}
+
+async function scrollToMap() {
+  await nextTick()
+  await initBaiduMap()
+  mapContainerRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+}
+
+onMounted(() => {
+  initBaiduMap()
 })
 </script>
 
@@ -154,7 +283,7 @@ const counts = computed(() => {
         <section class="sideCard lynx-card lynx-card--glass">
           <h3 class="sideCard__title">特色工具</h3>
           <div class="toolGrid">
-            <button class="tool" type="button">
+            <button class="tool" type="button" @click="scrollToMap">
               <span class="tool__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path
@@ -184,6 +313,18 @@ const counts = computed(() => {
               </span>
               <span class="tool__text">非遗展示</span>
             </button>
+          </div>
+        </section>
+
+        <section class="sideCard lynx-card lynx-card--glass">
+          <h3 class="sideCard__title">百度地图</h3>
+          <p class="mapDesc">展示十堰周边热门目的地，支持滚轮缩放与拖拽查看。</p>
+          <div ref="mapContainerRef" class="baiduMap" :class="{ 'is-error': !!mapError }">
+            <div v-if="mapError" class="mapState mapState--error">
+              <span>{{ mapError }}</span>
+              <el-button size="small" type="danger" plain @click="retryMap">重试加载</el-button>
+            </div>
+            <div v-else-if="!mapReady" class="mapState">地图加载中...</div>
           </div>
         </section>
       </aside>
@@ -473,6 +614,46 @@ const counts = computed(() => {
 .tool__text {
   font-weight: 900;
   color: #0f172a;
+}
+
+.mapDesc {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.baiduMap {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(248, 250, 252, 1), rgba(241, 245, 249, 1));
+}
+
+.baiduMap.is-error {
+  background: rgba(254, 242, 242, 1);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.mapState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #64748b;
+  padding: 0 12px;
+  text-align: center;
+}
+
+.mapState--error {
+  color: #991b1b;
 }
 
 @media (max-width: 1180px) {
