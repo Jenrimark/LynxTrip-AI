@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const BAIDU_MAP_AK = import.meta.env.VITE_BAIDU_MAP_AK || ''
+const mapWrapRef = ref(null)
 const mapHostRef = ref(null)
 const mapReady = ref(false)
 const mapLoading = ref(false)
@@ -17,6 +18,8 @@ const mapDebug = computed(() => {
 
 let mapInstance = null
 let baiduMapLoader = null
+let resizeObserver = null
+let resizeRaf = 0
 
 function loadBaiduMapSdk() {
   if (typeof window === 'undefined') return Promise.reject(new Error('当前环境不支持地图加载'))
@@ -94,7 +97,13 @@ function loadBaiduMapSdk() {
 }
 
 async function initMap() {
-  if (mapInstance || mapLoading.value) return
+  if (mapLoading.value) return
+  // HMR/快速切换场景：实例仍在但状态被重置，直接恢复显示
+  if (mapInstance) {
+    mapReady.value = true
+    mapError.value = ''
+    return
+  }
   if (!mapHostRef.value) return
   mapLoading.value = true
   try {
@@ -123,7 +132,34 @@ async function retry() {
   await initMap()
 }
 
-onMounted(initMap)
+function requestResize() {
+  if (!mapInstance) return
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
+  resizeRaf = requestAnimationFrame(() => {
+    try {
+      mapInstance?.checkResize?.()
+    } catch {
+      // ignore
+    }
+  })
+}
+
+onMounted(async () => {
+  await nextTick()
+  await initMap()
+  requestResize()
+
+  // 侧栏收起/路由切换可能导致容器尺寸变化：用 ResizeObserver 保证地图不“白屏”
+  try {
+    if (mapWrapRef.value && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => requestResize())
+      resizeObserver.observe(mapWrapRef.value)
+    }
+  } catch {
+    resizeObserver = null
+  }
+})
+
 onMounted(() => {
   // 兜底：全局变量非响应式，主动同步一次显示状态
   try {
@@ -132,11 +168,23 @@ onMounted(() => {
     bmapGlobal.value = false
   }
 })
+
+onBeforeUnmount(() => {
+  try {
+    resizeObserver?.disconnect?.()
+  } catch {
+    // ignore
+  }
+  resizeObserver = null
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
+  resizeRaf = 0
+  mapInstance = null
+})
 </script>
 
 <template>
   <section class="myMapPage">
-    <div class="mapWrap" :class="{ 'is-error': !!mapError }">
+    <div ref="mapWrapRef" class="mapWrap" :class="{ 'is-error': !!mapError }">
       <div v-if="mapError" class="mapState mapState--error">
         <div>{{ mapError }}</div>
         <el-button size="small" type="danger" plain @click="retry">重试加载</el-button>

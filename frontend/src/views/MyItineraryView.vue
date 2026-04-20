@@ -40,6 +40,7 @@ const mapDebug = computed(() => {
 let mapInstance = null
 let baiduMapLoader = null
 let baiduMapLoaderStartedAt = 0
+let mapInitToken = 0
 const lastTab = ref(activeTab.value)
 
 const me = computed(() => getUserById(getCurrentUserId()))
@@ -175,7 +176,10 @@ async function suggestPoint(name) {
     const list = Array.isArray(data?.data) ? data.data : []
     const hit = list.find((x) => x && x.lng != null && x.lat != null) || null
     if (!hit) return null
-    return { name: hit.name || q, lng: Number(hit.lng), lat: Number(hit.lat) }
+    const lng = Number(hit.lng)
+    const lat = Number(hit.lat)
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
+    return { name: hit.name || q, lng, lat }
   } catch {
     return null
   }
@@ -202,51 +206,70 @@ async function buildMapPoints() {
 
 function renderRouteOnMap(BMapGL, points) {
   if (!mapInstance) return
-  mapInstance.clearOverlays()
-  if (!points.length) return
+  const safe = (points || []).filter((p) => p && Number.isFinite(p.lng) && Number.isFinite(p.lat))
+  try {
+    mapInstance.clearOverlays()
+  } catch {
+    return
+  }
+  if (!safe.length) return
 
-  const bPoints = points.map((p) => new BMapGL.Point(p.lng, p.lat))
-  bPoints.forEach((pt, idx) => {
-    const marker = new BMapGL.Marker(pt)
-    mapInstance.addOverlay(marker)
-    const label = new BMapGL.Label(`${idx + 1}. ${points[idx].name || '地点'}`, {
-      position: pt,
-      offset: new BMapGL.Size(14, -10),
+  try {
+    const bPoints = safe.map((p) => new BMapGL.Point(p.lng, p.lat))
+    bPoints.forEach((pt, idx) => {
+      const marker = new BMapGL.Marker(pt)
+      mapInstance.addOverlay(marker)
+      const label = new BMapGL.Label(`${idx + 1}. ${safe[idx].name || '地点'}`, {
+        position: pt,
+        offset: new BMapGL.Size(14, -10),
+      })
+      label.setStyle({
+        color: '#0f172a',
+        borderColor: 'rgba(15,23,42,0.10)',
+        borderRadius: '10px',
+        padding: '2px 8px',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        fontSize: '12px',
+        fontWeight: '700',
+        boxShadow: '0 10px 22px rgba(15,23,42,0.10)',
+      })
+      mapInstance.addOverlay(label)
     })
-    label.setStyle({
-      color: '#0f172a',
-      borderColor: 'rgba(15,23,42,0.10)',
-      borderRadius: '10px',
-      padding: '2px 8px',
-      backgroundColor: 'rgba(255,255,255,0.92)',
-      fontSize: '12px',
-      fontWeight: '700',
-      boxShadow: '0 10px 22px rgba(15,23,42,0.10)',
-    })
-    mapInstance.addOverlay(label)
-  })
 
-  if (bPoints.length >= 2) {
-    const line = new BMapGL.Polyline(bPoints, {
-      strokeColor: '#ff8839',
-      strokeWeight: 4,
-      strokeOpacity: 0.8,
-    })
-    mapInstance.addOverlay(line)
+    if (bPoints.length >= 2) {
+      const line = new BMapGL.Polyline(bPoints, {
+        strokeColor: '#ff8839',
+        strokeWeight: 4,
+        strokeOpacity: 0.8,
+      })
+      mapInstance.addOverlay(line)
+    }
+
+    try {
+      mapInstance.setViewport(bPoints, { margins: [40, 40, 40, 40] })
+    } catch {
+      // ignore viewport failures (container destroyed during switch)
+    }
+  } catch (e) {
+    // 百度内部偶发空引用（例如 coordType），直接抛出让上层重建实例
+    throw e
   }
 
-  mapInstance.setViewport(bPoints, { margins: [40, 40, 40, 40] })
 }
 
 async function initMapIfNeeded() {
   if (activeTab.value !== 'map') return
   if (!mapContainerRef.value) return
   if (mapLoading.value) return
+  const token = ++mapInitToken
+  const hostEl = mapContainerRef.value
   mapLoading.value = true
   try {
     mapError.value = ''
     const BMapGL = await loadBaiduMapSdk()
     bmapGlobal.value = typeof window !== 'undefined' ? !!window.BMapGL : false
+    if (token !== mapInitToken || activeTab.value !== 'map') return
+    if (!mapContainerRef.value || mapContainerRef.value !== hostEl) return
 
     if (!mapInstance) {
       mapInstance = new BMapGL.Map(mapContainerRef.value)
@@ -255,6 +278,7 @@ async function initMapIfNeeded() {
     }
 
     const points = await buildMapPoints()
+    if (token !== mapInitToken || activeTab.value !== 'map') return
     if (!points.length) {
       const center = new BMapGL.Point(110.93, 32.84)
       mapInstance.centerAndZoom(center, 6)
@@ -267,6 +291,8 @@ async function initMapIfNeeded() {
   } catch (err) {
     mapReady.value = false
     mapError.value = err instanceof Error ? err.message : '地图初始化失败'
+    // 强制丢弃实例，避免进入“坏状态”导致重试也失败
+    mapInstance = null
   } finally {
     mapLoading.value = false
   }
@@ -649,6 +675,7 @@ watch(activeTab, async (next) => {
     } catch {
       // ignore
     }
+    mapInitToken++
     mapInstance = null
     mapReady.value = false
     mapError.value = ''
