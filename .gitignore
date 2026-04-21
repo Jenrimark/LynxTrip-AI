@@ -15,7 +15,7 @@ Desktop.ini
 *.iws
 *.ipr
 out/
-
+design-system/
 # VS Code
 .vscode/
 *.code-workspace
