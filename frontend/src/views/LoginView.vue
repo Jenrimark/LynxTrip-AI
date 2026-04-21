@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { isLoggedIn, loginWithPassword, registerUser } from '../services/lynxDb'
+import { fetchMe, getErrorMessage, login, register } from '../services/auth'
 import heroTexture from '../assets/background.png'
 import logoUrl from '../assets/logo2.png'
 
@@ -43,19 +43,21 @@ function redirectAfterAuth() {
   router.replace(path)
 }
 
-onMounted(() => {
-  if (isLoggedIn()) redirectAfterAuth()
+onMounted(async () => {
+  const me = await fetchMe()
+  if (me) redirectAfterAuth()
 })
 
-function submitLogin() {
+async function submitLogin() {
   const account = String(loginForm.value.account ?? '').trim()
   if (!account || !loginForm.value.mima) {
     ElMessage.warning('请填写账号与密码')
     return
   }
-  const res = loginWithPassword(account, loginForm.value.mima)
-  if (!res.ok) {
-    ElMessage.error(res.message)
+  try {
+    await login(account, loginForm.value.mima)
+  } catch (err) {
+    ElMessage.error(getErrorMessage(err, '登录失败'))
     return
   }
   ElMessage.success('登录成功')
@@ -83,7 +85,7 @@ function prevRegisterStep() {
   regStep.value = 1
 }
 
-function submitRegister() {
+async function submitRegister() {
   if (regStep.value !== 2) return
   const account = String(regForm.value.account ?? '').trim()
   if (!account || !regForm.value.mima) {
@@ -98,14 +100,15 @@ function submitRegister() {
     ElMessage.warning('两次密码不一致')
     return
   }
-  const id = registerUser({
-    account: regForm.value.account,
-    mima: regForm.value.mima,
-    xingming: regForm.value.xingming?.trim() || '',
-    xingbie: regForm.value.xingbie || '—',
-  })
-  if (id == null) {
-    ElMessage.error('注册失败，该账号可能已注册')
+  try {
+    await register({
+      account: regForm.value.account,
+      mima: regForm.value.mima,
+      xingming: regForm.value.xingming?.trim() || '',
+      xingbie: regForm.value.xingbie || '—',
+    })
+  } catch (err) {
+    ElMessage.error(getErrorMessage(err, '注册失败'))
     return
   }
   ElMessage.success('注册成功，已自动登录')

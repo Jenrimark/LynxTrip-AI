@@ -44,7 +44,7 @@ let mapInitToken = 0
 const lastTab = ref(activeTab.value)
 
 const me = computed(() => getUserById(getCurrentUserId()))
-const allRoutes = computed(() => [...listRoutes('lvyouxianlu'), ...listRoutes('zuixinxianlu')])
+const allRoutes = ref([])
 
 const budget = computed(() => {
   const m = String(form.value.budgetText || '').match(/\d+/)
@@ -363,11 +363,11 @@ function buildPlanFromForm() {
   }
 }
 
-function generate() {
+async function generate() {
   result.value = buildPlanFromForm()
   const firstDays = itineraryDays.value.map((d) => d.dayNo)
   openDays.value = new Set(firstDays.slice(0, 1))
-  saveTrip({
+  await saveTrip({
     title: `${result.value.title} · ${result.value.days}天`,
     payload: result.value,
   })
@@ -431,10 +431,10 @@ function addRow() {
   })
 }
 
-function addToCart(rec) {
+async function addToCart(rec) {
   const good = allRoutes.value.find((r) => Number(r.id) === Number(rec.id))
   if (!good) return
-  upsertCartItem({ tablename: rec.tablename || 'lvyouxianlu', good })
+  await upsertCartItem({ tablename: rec.tablename || 'lvyouxianlu', good })
   ElMessage.success('已加入购物车')
 }
 
@@ -619,11 +619,12 @@ function deleteCurrentPlan() {
   ElMessage.success('当前页面内容已清空')
 }
 
-function hydrateFromQuery() {
+async function hydrateFromQuery() {
   const q = route.query
   const tripId = String(q.tripId || '').trim()
   if (tripId) {
-    const hit = listTrips().find((t) => String(t.id) === tripId)
+    const rows = await listTrips()
+    const hit = rows.find((t) => String(t.id) === tripId)
     if (hit?.payload) {
       result.value = hit.payload
       const from = String(hit.payload.departure || hit.payload.from || '').trim()
@@ -659,10 +660,14 @@ function hydrateFromQuery() {
       form.value.preference = `多城市路线：${citiesChain.value.join(' → ')}`
     }
   }
-  if (String(q.autogen || '') === '1') generate()
+  if (String(q.autogen || '') === '1') await generate()
 }
 
-onMounted(hydrateFromQuery)
+onMounted(async () => {
+  const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
+  allRoutes.value = [...a, ...b]
+  await hydrateFromQuery()
+})
 
 watch(activeTab, async (next) => {
   const prev = lastTab.value

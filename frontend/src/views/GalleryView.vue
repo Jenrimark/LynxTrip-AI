@@ -19,7 +19,9 @@ const form = ref({
 
 const list = ref([])
 function refresh() {
-  list.value = listGallery()
+  listGallery().then((rows) => {
+    list.value = rows
+  })
 }
 
 onMounted(refresh)
@@ -33,29 +35,32 @@ const filtered = computed(() => {
   })
 })
 
-const storeups = computed(() => listStoreup())
+const storeups = ref([])
+onMounted(async () => {
+  storeups.value = await listStoreup()
+})
 
-function openAdd() {
-  if (!requireLogin(router, { message: '新增拾记需先登录', redirect: router.currentRoute.value.fullPath })) return
+async function openAdd() {
+  if (!(await requireLogin(router, { message: '新增拾记需先登录', redirect: router.currentRoute.value.fullPath }))) return
   isAddOpen.value = true
 }
 
-function submit() {
-  if (!requireLogin(router, { message: '请先登录后再提交', redirect: router.currentRoute.value.fullPath })) return
+async function submit() {
+  if (!(await requireLogin(router, { message: '请先登录后再提交', redirect: router.currentRoute.value.fullPath }))) return
   if (!form.value.photoUrl?.trim()) {
     ElMessage.warning('请先填写图片链接（photoUrl）')
     return
   }
-  addGalleryItem({ ...form.value })
+  await addGalleryItem({ ...form.value })
   isAddOpen.value = false
   form.value = { title: '', photoUrl: '', note: '', takenAt: '', location: '' }
   refresh()
   ElMessage.success('已添加到光影拾记')
 }
 
-function quickFromStoreup(row) {
-  if (!requireLogin(router, { message: '从收藏生成拾记需先登录', redirect: router.currentRoute.value.fullPath })) return
-  addGalleryItem({
+async function quickFromStoreup(row) {
+  if (!(await requireLogin(router, { message: '从收藏生成拾记需先登录', redirect: router.currentRoute.value.fullPath }))) return
+  await addGalleryItem({
     title: row.name,
     photoUrl: row.picture,
     note: `来自收藏：${row.tablename} #${row.refid}`,
@@ -63,6 +68,7 @@ function quickFromStoreup(row) {
     location: '',
   })
   refresh()
+  storeups.value = await listStoreup()
   ElMessage.success('已从收藏生成拾记')
 }
 </script>

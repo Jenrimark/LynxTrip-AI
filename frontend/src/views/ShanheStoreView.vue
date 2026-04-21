@@ -1,13 +1,15 @@
 <script setup>
-import { computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listRoutes } from '../services/lynxDb'
 
 const router = useRouter()
 
-const goods = computed(() => {
-  const merged = [...listRoutes('lvyouxianlu'), ...listRoutes('zuixinxianlu')]
-  return merged.slice(0, 8)
+const goods = ref([])
+
+onMounted(async () => {
+  const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
+  goods.value = [...a, ...b].slice(0, 8)
 })
 
 function goRoutes() {

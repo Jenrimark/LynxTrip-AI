@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { isLoggedIn } from '../services/lynxDb'
+import { isLoggedInRemote } from '../services/auth'
 import HomeView from '../views/HomeView.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
 import RoutesView from '../views/RoutesView.vue'
@@ -45,12 +45,12 @@ const router = createRouter({
 /** 未登录仅可浏览：主题简旅、资讯、光影拾记、产品介绍；登录页始终可进 */
 const GUEST_ROUTE_NAMES = new Set(['routes', 'news', 'gallery', 'product', 'shanhe-store', 'my-itinerary', 'my-map'])
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   if (to.name === 'login') {
     next()
     return
   }
-  if (isLoggedIn()) {
+  if (await isLoggedInRemote()) {
     next()
     return
   }

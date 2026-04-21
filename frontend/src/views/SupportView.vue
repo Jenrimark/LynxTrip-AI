@@ -12,12 +12,12 @@ const feedRef = ref(null)
 const isGenerating = ref(false)
 let typingTimer = null
 
-function refresh() {
-  list.value = listChat()
+async function refresh() {
+  list.value = await listChat()
 }
 
 onMounted(async () => {
-  refresh()
+  await refresh()
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY)
     if (raw) input.value = String(raw)
@@ -62,8 +62,8 @@ async function submit() {
 
   input.value = ''
   isGenerating.value = true
-  sendChat({ ask: text })
-  refresh()
+  await sendChat({ ask: text })
+  await refresh()
   await nextTick()
   scrollToBottom()
   ElMessage.success('已发送')
@@ -71,7 +71,7 @@ async function submit() {
   // 简短“生成态”模拟（跟问答页一致的停止按钮逻辑）
   typingTimer = setTimeout(async () => {
     isGenerating.value = false
-    refresh()
+    await refresh()
     await nextTick()
     scrollToBottom()
   }, 420)

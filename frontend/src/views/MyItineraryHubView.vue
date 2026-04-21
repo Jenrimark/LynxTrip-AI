@@ -11,8 +11,10 @@ const storeups = ref([])
 const activeMenu = ref('itinerary')
 
 function refresh() {
-  trips.value = listTrips()
-  storeups.value = listStoreup()
+  Promise.all([listTrips(), listStoreup()]).then(([t, s]) => {
+    trips.value = t
+    storeups.value = s
+  })
 }
 
 onMounted(refresh)

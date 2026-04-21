@@ -55,6 +55,8 @@ const isGenerating = ref(false)
 let typingTimer = null
 
 const messages = ref([]) // {id, role: 'user'|'assistant', text, html, ts}
+const routeData = ref([])
+const newsData = ref([])
 
 function loadDraft() {
   try {
@@ -133,12 +135,8 @@ function takeTop(list, n) {
 
 function searchCorpus(query) {
   const q = query.trim().toLowerCase()
-  const routes = [
-    ...listRoutes('lvyouxianlu').map((r) => ({ ...r, __table: 'lvyouxianlu' })),
-    ...listRoutes('zuixinxianlu').map((r) => ({ ...r, __table: 'zuixinxianlu' })),
-  ]
-
-  const news = listNews()
+  const routes = routeData.value
+  const news = newsData.value
 
   const routeHits = routes
     .map((r) => {
@@ -476,6 +474,10 @@ function onKeydown(e) {
 
 onMounted(() => {
   loadDraft()
+  Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu'), listNews()]).then(([a, b, n]) => {
+    routeData.value = [...a.map((r) => ({ ...r, __table: 'lvyouxianlu' })), ...b.map((r) => ({ ...r, __table: 'zuixinxianlu' }))]
+    newsData.value = n
+  })
 })
 
 watch(

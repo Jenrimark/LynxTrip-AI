@@ -12,7 +12,9 @@ const active = ref(null)
 
 const list = ref([])
 onMounted(() => {
-  list.value = listNews()
+  listNews().then((rows) => {
+    list.value = rows
+  })
 })
 
 const filtered = computed(() => {
@@ -24,8 +26,8 @@ const filtered = computed(() => {
   })
 })
 
-function openDetail(row) {
-  if (!requireLogin(router, { message: '阅读全文需先登录', redirect: router.currentRoute.value.fullPath })) return
+async function openDetail(row) {
+  if (!(await requireLogin(router, { message: '阅读全文需先登录', redirect: router.currentRoute.value.fullPath }))) return
   active.value = row
   drawerOpen.value = true
 }

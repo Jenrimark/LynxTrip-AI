@@ -64,17 +64,31 @@ public final class RootDotenvLoader {
             if (key == null || key.isBlank()) {
                 return;
             }
-            if (System.getenv(key) != null) {
-                return;
-            }
-            if (System.getProperty(key) != null) {
-                return;
-            }
             String val = e.getValue();
-            if (val != null) {
+            if (val == null) {
+                return;
+            }
+
+            if (System.getenv(key) == null && System.getProperty(key) == null) {
                 System.setProperty(key, val);
             }
+
+            String canonicalKey = toCanonicalPropertyKey(key);
+            if (canonicalKey != null
+                    && System.getenv(canonicalKey) == null
+                    && System.getProperty(canonicalKey) == null) {
+                System.setProperty(canonicalKey, val);
+            }
         });
+    }
+
+    private static String toCanonicalPropertyKey(String key) {
+        String normalized = key.trim().toLowerCase();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        // Allow .env keys like SPRING_PROFILES_ACTIVE to map to spring.profiles.active.
+        return normalized.replace('_', '.');
     }
 
     private static Path resolveStandardEnvFile() {

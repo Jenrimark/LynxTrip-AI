@@ -17,14 +17,16 @@ const addressId = ref(null)
 const isAddAddrOpen = ref(false)
 const addrForm = ref({ name: '', phone: '', address: '', isdefault: '是' })
 
-function refresh() {
-  cart.value = listCart()
-  addresses.value = listAddresses()
+async function refresh() {
+  cart.value = await listCart()
+  addresses.value = await listAddresses()
   const def = addresses.value.find((a) => a.isdefault === '是')
   addressId.value = def?.id ?? addresses.value[0]?.id ?? null
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  await refresh()
+})
 
 const subtotal = computed(() => cart.value.reduce((sum, r) => sum + Number(r.price || 0) * Number(r.buynumber || 1), 0))
 
@@ -35,18 +37,18 @@ const selectedAddressText = computed(() => {
 })
 
 async function changeQty(row, n) {
-  updateCartQuantity(row.id, n)
-  refresh()
+  await updateCartQuantity(row.id, n)
+  await refresh()
 }
 
 async function remove(row) {
   await ElMessageBox.confirm('确认移除该商品吗？', '提示', { type: 'warning' })
-  removeCartItem(row.id)
-  refresh()
+  await removeCartItem(row.id)
+  await refresh()
   ElMessage.success('已移除')
 }
 
-function doCheckout() {
+async function doCheckout() {
   if (!cart.value.length) {
     ElMessage.warning('购物车为空')
     return
@@ -55,8 +57,8 @@ function doCheckout() {
     ElMessage.warning('请先选择/新增收货地址')
     return
   }
-  checkout({ addressText: selectedAddressText.value })
-  refresh()
+  await checkout({ addressText: selectedAddressText.value })
+  await refresh()
   ElMessage.success('已生成订单（orders）')
 }
 
@@ -64,21 +66,21 @@ function openAddAddr() {
   isAddAddrOpen.value = true
 }
 
-function saveAddr() {
+async function saveAddr() {
   if (!addrForm.value.name || !addrForm.value.phone || !addrForm.value.address) {
     ElMessage.warning('请填写完整：收货人/电话/地址')
     return
   }
-  addAddress({ ...addrForm.value })
+  await addAddress({ ...addrForm.value })
   isAddAddrOpen.value = false
   addrForm.value = { name: '', phone: '', address: '', isdefault: '是' }
-  refresh()
+  await refresh()
   ElMessage.success('地址已保存')
 }
 
-function chooseDefault(id) {
-  setDefaultAddress(id)
-  refresh()
+async function chooseDefault(id) {
+  await setDefaultAddress(id)
+  await refresh()
   ElMessage.success('已设为默认地址')
 }
 </script>

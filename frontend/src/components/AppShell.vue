@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { getCurrentUserId, getUserById, isLoggedIn } from '../services/lynxDb'
+import { fetchMe, isLoggedInRemote } from '../services/auth'
 import logoUrl from '../assets/logo2.png'
 
 const router = useRouter()
@@ -166,18 +166,14 @@ function go(name) {
 const loggedIn = ref(false)
 const authLabel = ref('')
 
-function refreshAuth() {
-  loggedIn.value = isLoggedIn()
-  if (loggedIn.value) {
-    const u = getUserById(getCurrentUserId())
-    authLabel.value = u?.xingming || u?.yonghuming || '用户'
-  } else {
-    authLabel.value = ''
-  }
+async function refreshAuth() {
+  const me = await fetchMe()
+  loggedIn.value = !!me
+  authLabel.value = me ? (me.xingming || me.yonghuming || '用户') : ''
 }
 
-function goMe() {
-  if (!isLoggedIn()) {
+async function goMe() {
+  if (!(await isLoggedInRemote())) {
     ElMessage.warning('请先登录后使用个人中心')
     router.push({ name: 'login', query: { redirect: '/me' } })
     return
@@ -298,8 +294,18 @@ function handleEscClose(event) {
 }
 
 onMounted(checkHealth)
-onMounted(refreshAuth)
-watch(() => route.fullPath, refreshAuth)
+onMounted(() => {
+  refreshAuth().catch(() => {
+    loggedIn.value = false
+    authLabel.value = ''
+  })
+})
+watch(() => route.fullPath, () => {
+  refreshAuth().catch(() => {
+    loggedIn.value = false
+    authLabel.value = ''
+  })
+})
 
 watch(() => route.name, (name) => {
   if (name === 'login') {
@@ -437,7 +443,7 @@ onBeforeUnmount(() => {
           <div class="uipro-group">
             <div class="uipro-group__label">AI助手</div>
             <nav class="uipro-nav" aria-label="AI助手">
-              <button class="uipro-item" :class="{ 'is-active': active === 'ai-qa' }" :title="sidebarCollapsed ? 'AI问答助手' : undefined" @click="go('ai-qa')">
+              <button class="uipro-item" :class="{ 'is-active': active === 'ai-qa' }" :title="sidebarCollapsed ? '灵犀AI助手' : undefined" @click="go('ai-qa')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
                     <path
@@ -446,7 +452,7 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                 </span>
-                <span class="uipro-item__label">AI问答助手</span>
+                <span class="uipro-item__label">灵犀AI助手</span>
               </button>
             </nav>
           </div>

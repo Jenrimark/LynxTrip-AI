@@ -34,6 +34,21 @@ npm --prefix frontend install
 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 ```
 
+也可以使用一键脚本：
+
+```bash
+# 首次（装依赖 + 预编译后端）
+./scripts/dev-first.sh
+
+# 非首次（自动打开两个 Terminal 会话分别启动前后端）
+./scripts/dev.sh
+```
+
+说明：
+
+- 在 macOS 上，`./scripts/dev.sh` 会自动通过 Terminal 打开两个独立会话来分别运行前后端。
+- 在非 macOS 环境会自动回退为“当前终端内并发启动前后端”模式。
+
 打开浏览器访问 `http://127.0.0.1:5173`，首页会自动请求 `/api/health` 检测后端联通性（通过 Vite 代理转发到 `http://127.0.0.1:8080`）。
 
 如果你要使用“产品页”里的百度地图组件，请在仓库根目录 `.env` 中配置：

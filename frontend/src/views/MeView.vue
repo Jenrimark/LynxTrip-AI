@@ -2,22 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { fetchMe, getErrorMessage, isLoggedInRemote, logout, updatePassword as updatePasswordRemote } from '../services/auth'
 import {
-  getCurrentUserId,
-  getUserById,
-  isLoggedIn,
   listOrders,
   listAddresses,
   listStoreup,
   addAddress,
   setDefaultAddress,
-  setCurrentUserId,
   updateOrderStatus,
   removeOrder,
   formatUserIdDisplay,
-  updateUserPassword,
   deleteUserAccount,
-  SESSION_LOGGED_OUT,
 } from '../services/lynxDb'
 
 const router = useRouter()
@@ -40,22 +35,27 @@ const orderTabs = [
   { key: '已取消', label: '已取消' },
 ]
 
-function refresh() {
-  const id = getCurrentUserId()
-  user.value = getUserById(id)
-  orders.value = listOrders(id)
-  addresses.value = listAddresses(id)
-  storeups.value = listStoreup(id)
+async function refresh() {
+  try {
+    orders.value = await listOrders()
+    addresses.value = await listAddresses()
+    storeups.value = await listStoreup()
+  } catch {
+    orders.value = []
+    addresses.value = []
+    storeups.value = []
+  }
 }
 
-const userIdDisplay = computed(() => formatUserIdDisplay(getCurrentUserId()))
+const userIdDisplay = computed(() => formatUserIdDisplay(user.value?.id))
 
-onMounted(() => {
-  if (!isLoggedIn()) {
+onMounted(async () => {
+  if (!(await isLoggedInRemote())) {
     router.replace({ name: 'login', query: { redirect: '/me' } })
     return
   }
-  refresh()
+  user.value = await fetchMe(true)
+  await refresh()
 })
 
 const moneyText = computed(() => {
@@ -89,34 +89,34 @@ function getOrderActions(status) {
   return ['联系客服']
 }
 
-function handleOrderAction(order, action) {
-  const cur = getCurrentUserId()
+async function handleOrderAction(order, action) {
+  const cur = Number(user.value?.id ?? 0)
   if (action === '去支付') {
-    updateOrderStatus(order.id, '已支付', cur)
+    await updateOrderStatus(order.id, '已支付', cur)
     ElMessage.success('订单已支付')
     refresh()
     return
   }
   if (action === '取消订单') {
-    updateOrderStatus(order.id, '已取消', cur)
+    await updateOrderStatus(order.id, '已取消', cur)
     ElMessage.success('订单已取消')
     refresh()
     return
   }
   if (action === '申请退款') {
-    updateOrderStatus(order.id, '已退款', cur)
+    await updateOrderStatus(order.id, '已退款', cur)
     ElMessage.success('退款申请已提交')
     refresh()
     return
   }
   if (action === '确认收货') {
-    updateOrderStatus(order.id, '已完成', cur)
+    await updateOrderStatus(order.id, '已完成', cur)
     ElMessage.success('已确认收货')
     refresh()
     return
   }
   if (action === '删除记录') {
-    removeOrder(order.id, cur)
+    await removeOrder(order.id, cur)
     ElMessage.success('订单记录已删除')
     refresh()
     return
@@ -128,21 +128,21 @@ function openAddAddr() {
   isAddAddrOpen.value = true
 }
 
-function saveAddr() {
+async function saveAddr() {
   if (!addrForm.value.name || !addrForm.value.phone || !addrForm.value.address) {
     ElMessage.warning('请填写完整：收货人/电话/地址')
     return
   }
-  addAddress({ userId: getCurrentUserId(), ...addrForm.value })
+  await addAddress({ userId: Number(user.value?.id ?? 0), ...addrForm.value })
   isAddAddrOpen.value = false
   addrForm.value = { name: '', phone: '', address: '', isdefault: '否' }
-  refresh()
+  await refresh()
   ElMessage.success('地址已保存')
 }
 
-function chooseDefault(id) {
-  setDefaultAddress(id, getCurrentUserId())
-  refresh()
+async function chooseDefault(id) {
+  await setDefaultAddress(id, Number(user.value?.id ?? 0))
+  await refresh()
   ElMessage.success('已设为默认地址')
 }
 
@@ -154,14 +154,15 @@ function openPwd() {
   isPwdOpen.value = true
 }
 
-function savePwd() {
+async function savePwd() {
   if (pwdForm.value.newMima !== pwdForm.value.newMima2) {
     ElMessage.warning('两次新密码不一致')
     return
   }
-  const ok = updateUserPassword(getCurrentUserId(), pwdForm.value.oldMima, pwdForm.value.newMima)
-  if (!ok) {
-    ElMessage.error('原密码错误或新密码无效')
+  try {
+    await updatePasswordRemote(pwdForm.value.oldMima, pwdForm.value.newMima)
+  } catch (err) {
+    ElMessage.error(getErrorMessage(err, '原密码错误或新密码无效'))
     return
   }
   isPwdOpen.value = false
@@ -172,14 +173,14 @@ function resetPwdForm() {
   pwdForm.value = { oldMima: '', newMima: '', newMima2: '' }
 }
 
-function handleLogoutSession() {
-  setCurrentUserId(SESSION_LOGGED_OUT)
+async function handleLogoutSession() {
+  await logout()
   ElMessage.success('已退出登录')
   router.replace({ name: 'login', query: { redirect: '/me' } })
 }
 
 async function handleLogoutAccount() {
-  const id = getCurrentUserId()
+  const id = Number(user.value?.id ?? 0)
   if (id === 0) {
     ElMessage.warning('管理员账号不可注销')
     return
@@ -193,7 +194,7 @@ async function handleLogoutAccount() {
   } catch {
     return
   }
-  deleteUserAccount(id)
+  await deleteUserAccount(id)
   ElMessage.success('账号已注销')
   router.replace({ name: 'login', query: { redirect: '/me' } })
 }

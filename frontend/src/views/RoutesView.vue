@@ -21,18 +21,26 @@ const sortKey = ref('hot') // hot | priceAsc | priceDesc | timeAsc | timeDesc
 
 const drawerOpen = ref(false)
 const active = ref(null)
+const routesLv = ref([])
+const routesNew = ref([])
+const categoriesList = ref([])
 
-const categories = computed(() => listCategories().map((c) => c.xianlufenlei))
+const categories = computed(() => categoriesList.value.map((c) => c.xianlufenlei))
 
 const storeupSet = ref(new Set())
-function refreshStoreup() {
-  const items = listStoreup()
+async function refreshStoreup() {
+  const items = await listStoreup()
   storeupSet.value = new Set(items.map((s) => `${s.tablename}:${s.refid}`))
 }
 
-onMounted(refreshStoreup)
+onMounted(async () => {
+  categoriesList.value = await listCategories()
+  routesLv.value = await listRoutes('lvyouxianlu')
+  routesNew.value = await listRoutes('zuixinxianlu')
+  await refreshStoreup()
+})
 
-const rawList = computed(() => listRoutes(tab.value))
+const rawList = computed(() => (tab.value === 'zuixinxianlu' ? routesNew.value : routesLv.value))
 
 const filtered = computed(() => {
   const kw = keyword.value.trim()
@@ -63,11 +71,11 @@ const sorted = computed(() => {
   return list
 })
 
-function openDetail(row) {
-  if (!requireLogin(router, { message: '查看路线详情请先登录', redirect: router.currentRoute.value.fullPath })) return
+async function openDetail(row) {
+  if (!(await requireLogin(router, { message: '查看路线详情请先登录', redirect: router.currentRoute.value.fullPath }))) return
   active.value = row
   drawerOpen.value = true
-  bumpRouteClick(tab.value, row.id)
+  await bumpRouteClick(tab.value, row.id)
 }
 
 function formatDate(dt) {
@@ -81,21 +89,21 @@ function isFav(row) {
   return storeupSet.value.has(`${tab.value}:${row.id}`)
 }
 
-function toggleFav(row) {
-  if (!requireLogin(router, { message: '收藏功能需登录后使用', redirect: router.currentRoute.value.fullPath })) return
-  toggleStoreup({
+async function toggleFav(row) {
+  if (!(await requireLogin(router, { message: '收藏功能需登录后使用', redirect: router.currentRoute.value.fullPath }))) return
+  await toggleStoreup({
     tablename: tab.value,
     refid: row.id,
     name: row.xianlumingcheng,
     picture: row.fengmiantu,
   })
-  refreshStoreup()
+  await refreshStoreup()
   ElMessage.success(isFav(row) ? '已收藏' : '已取消收藏')
 }
 
-function addToCart(row) {
-  if (!requireLogin(router, { message: '加入购物车需先登录', redirect: router.currentRoute.value.fullPath })) return
-  upsertCartItem({ tablename: tab.value, good: row })
+async function addToCart(row) {
+  if (!(await requireLogin(router, { message: '加入购物车需先登录', redirect: router.currentRoute.value.fullPath }))) return
+  await upsertCartItem({ tablename: tab.value, good: row })
   ElMessage.success('已加入购物车')
 }
 
