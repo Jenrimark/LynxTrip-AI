@@ -39,4 +39,11 @@ public final class AuthDtos {
             @NotBlank(message = "旧密码不能为空") String oldMima,
             @NotBlank(message = "新密码不能为空") String newMima) {
     }
+
+    public record UpdateProfileRequest(
+            @Size(max = 64, message = "姓名过长") String xingming,
+            @Size(max = 16, message = "性别过长") String xingbie,
+            @Size(max = 32, message = "电话过长") String lianxidianhua,
+            @Size(max = 255, message = "头像地址过长") String touxiang) {
+    }
 }

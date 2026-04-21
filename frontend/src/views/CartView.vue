@@ -3,22 +3,38 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listCart,
+  listOrders,
   listAddresses,
   updateCartQuantity,
   removeCartItem,
   checkout,
   addAddress,
   setDefaultAddress,
+  updateOrderStatus,
+  removeOrder,
 } from '../services/lynxDb'
 
 const cart = ref([])
+const orders = ref([])
 const addresses = ref([])
 const addressId = ref(null)
 const isAddAddrOpen = ref(false)
 const addrForm = ref({ name: '', phone: '', address: '', isdefault: '是' })
+const activeOrderTab = ref('all')
+
+const orderTabs = [
+  { key: 'all', label: '全部' },
+  { key: '未支付', label: '未支付' },
+  { key: '已支付', label: '已支付' },
+  { key: '已发货', label: '已发货' },
+  { key: '已完成', label: '已完成' },
+  { key: '已退款', label: '已退款' },
+  { key: '已取消', label: '已取消' },
+]
 
 async function refresh() {
   cart.value = await listCart()
+  orders.value = await listOrders()
   addresses.value = await listAddresses()
   const def = addresses.value.find((a) => a.isdefault === '是')
   addressId.value = def?.id ?? addresses.value[0]?.id ?? null
@@ -29,6 +45,16 @@ onMounted(async () => {
 })
 
 const subtotal = computed(() => cart.value.reduce((sum, r) => sum + Number(r.price || 0) * Number(r.buynumber || 1), 0))
+const orderTabCount = computed(() =>
+  orderTabs.reduce((acc, tab) => {
+    acc[tab.key] = tab.key === 'all' ? orders.value.length : orders.value.filter((o) => String(o.status) === tab.key).length
+    return acc
+  }, {})
+)
+const filteredOrders = computed(() => {
+  if (activeOrderTab.value === 'all') return orders.value
+  return orders.value.filter((o) => String(o.status) === activeOrderTab.value)
+})
 
 const selectedAddressText = computed(() => {
   const row = addresses.value.find((a) => Number(a.id) === Number(addressId.value))
@@ -83,13 +109,61 @@ async function chooseDefault(id) {
   await refresh()
   ElMessage.success('已设为默认地址')
 }
+
+function formatMoney(v) {
+  return Number(v || 0).toFixed(2)
+}
+
+function getOrderActions(status) {
+  if (status === '未支付') return ['去支付', '取消订单']
+  if (status === '已支付') return ['申请退款', '联系客服']
+  if (status === '已发货') return ['查看物流', '确认收货']
+  if (status === '已完成') return ['再次购买']
+  if (status === '已退款') return ['查看退款详情', '再次购买']
+  if (status === '已取消') return ['删除记录', '再次购买']
+  return ['联系客服']
+}
+
+async function handleOrderAction(order, action) {
+  if (action === '去支付') {
+    await updateOrderStatus(order.id, '已支付')
+    ElMessage.success('订单已支付')
+    refresh()
+    return
+  }
+  if (action === '取消订单') {
+    await updateOrderStatus(order.id, '已取消')
+    ElMessage.success('订单已取消')
+    refresh()
+    return
+  }
+  if (action === '申请退款') {
+    await updateOrderStatus(order.id, '已退款')
+    ElMessage.success('退款申请已提交')
+    refresh()
+    return
+  }
+  if (action === '确认收货') {
+    await updateOrderStatus(order.id, '已完成')
+    ElMessage.success('已确认收货')
+    refresh()
+    return
+  }
+  if (action === '删除记录') {
+    await removeOrder(order.id)
+    ElMessage.success('订单记录已删除')
+    refresh()
+    return
+  }
+  ElMessage.info(`${action}功能待接入`)
+}
 </script>
 
 <template>
   <section class="page">
     <header class="hero lynx-card">
       <div class="hero__left">
-        <h2 class="hero__title lynx-h">购物车</h2>
+        <h2 class="hero__title lynx-h">我的订单</h2>
       </div>
       <div class="hero__right">
         <div class="hero__metric">
@@ -103,7 +177,57 @@ async function chooseDefault(id) {
       <div class="main">
         <div class="panel lynx-card lynx-card--glass">
           <div class="panel__hd">
-            <div class="panel__title">商品清单</div>
+            <div class="panel__title">我的订单</div>
+          </div>
+          <div class="orderTabs">
+            <button
+              v-for="tab in orderTabs"
+              :key="tab.key"
+              type="button"
+              class="orderTab"
+              :class="{ 'orderTab--active': activeOrderTab === tab.key }"
+              @click="activeOrderTab = tab.key"
+            >
+              {{ tab.label }}（{{ orderTabCount[tab.key] || 0 }}）
+            </button>
+          </div>
+          <div v-if="!filteredOrders.length" class="empty">
+            <el-empty description="暂无订单。" />
+          </div>
+          <div v-else class="orderList">
+            <div v-for="o in filteredOrders" :key="o.id" class="order">
+              <el-image class="order__img" :src="o.picture" fit="cover" :alt="o.goodname" />
+              <div class="order__info">
+                <div class="order__head">
+                  <div class="order__meta">订单编号：{{ o.orderid || '—' }}</div>
+                  <span class="status">{{ o.status || '—' }}</span>
+                </div>
+                <div class="order__name">商品：{{ o.goodname }}</div>
+                <div class="order__grid">
+                  <div class="order__meta">价格：¥ {{ formatMoney(o.price) }}</div>
+                  <div class="order__meta">数量：{{ Number(o.buynumber || 1) }}</div>
+                  <div class="order__meta">总价：¥ {{ formatMoney(o.total) }}</div>
+                </div>
+                <div class="order__meta">地址：{{ o.address || '—' }}</div>
+                <div class="order__actions">
+                  <el-button
+                    v-for="action in getOrderActions(o.status)"
+                    :key="`${o.id}-${action}`"
+                    size="small"
+                    :type="action === '去支付' || action === '确认收货' ? 'primary' : undefined"
+                    @click="handleOrderAction(o, action)"
+                  >
+                    {{ action }}
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel lynx-card lynx-card--glass">
+          <div class="panel__hd">
+            <div class="panel__title">待结算清单</div>
             <div>{{ cart.length }} 件</div>
           </div>
 
@@ -287,6 +411,92 @@ async function chooseDefault(id) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.orderTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.orderTab {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  color: #334155;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.orderTab--active {
+  color: #7c2d12;
+  border-color: rgba(249, 115, 22, 0.35);
+  background: rgba(255, 247, 237, 0.9);
+}
+.orderList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.order {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: 16px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.order__img {
+  width: 84px;
+  height: 64px;
+  border-radius: 14px;
+}
+.order__info {
+  min-width: 0;
+}
+.order__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.order__name {
+  margin-top: 6px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.order__meta {
+  font-size: 12px;
+  color: #64748b;
+}
+.order__grid {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.order__actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #7c2d12;
+  border: 1px solid rgba(249, 115, 22, 0.22);
+  background: rgba(255, 255, 255, 0.92);
 }
 .row {
   border: 1px solid rgba(15, 23, 42, 0.08);

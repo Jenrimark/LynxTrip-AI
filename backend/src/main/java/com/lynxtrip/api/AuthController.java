@@ -6,6 +6,7 @@ import java.util.Optional;
 import com.lynxtrip.api.dto.AuthDtos.ApiResult;
 import com.lynxtrip.api.dto.AuthDtos.LoginRequest;
 import com.lynxtrip.api.dto.AuthDtos.RegisterRequest;
+import com.lynxtrip.api.dto.AuthDtos.UpdateProfileRequest;
 import com.lynxtrip.api.dto.AuthDtos.UpdatePasswordRequest;
 import com.lynxtrip.api.dto.AuthDtos.AuthUser;
 import com.lynxtrip.service.AuthService;
@@ -80,6 +81,16 @@ public class AuthController {
         }
         AuthUser user = authService.me(userId);
         return new ApiResult(true, "密码已更新", user);
+    }
+
+    @PatchMapping("/profile")
+    public ApiResult updateProfile(@Valid @RequestBody UpdateProfileRequest req, HttpServletRequest request) {
+        Long userId = mustReadUserId(request);
+        AuthUser user = authService.updateProfile(userId, req.xingming(), req.xingbie(), req.lianxidianhua(), req.touxiang());
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录态失效");
+        }
+        return new ApiResult(true, "资料已更新", user);
     }
 
     @PostMapping("/logout")

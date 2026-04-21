@@ -20,7 +20,7 @@ function refresh() {
 onMounted(refresh)
 
 function goNew() {
-  router.push({ name: 'my-itinerary-workspace' })
+  router.push({ name: 'create-trip' })
 }
 
 function openTrip(t) {

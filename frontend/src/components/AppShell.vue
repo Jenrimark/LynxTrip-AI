@@ -426,7 +426,7 @@ onBeforeUnmount(() => {
                 </span>
                 <span class="uipro-item__label">山河印记</span>
               </button>
-              <button class="uipro-item" :class="{ 'is-active': active === 'cart' }" :title="sidebarCollapsed ? '购物车' : undefined" @click="go('cart')">
+              <button class="uipro-item" :class="{ 'is-active': active === 'cart' }" :title="sidebarCollapsed ? '我的订单' : undefined" @click="go('cart')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
                     <path
@@ -435,7 +435,7 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                 </span>
-                <span class="uipro-item__label">购物车</span>
+                <span class="uipro-item__label">我的订单</span>
               </button>
             </nav>
           </div>

@@ -67,6 +67,19 @@ public class AuthService {
         return userMapper.updatePassword(userId, encoder.encode(newPassword)) > 0;
     }
 
+    public AuthUser updateProfile(Long userId, String xingming, String xingbie, String lianxidianhua, String touxiang) {
+        UserEntity user = userMapper.findById(userId);
+        if (user == null) {
+            return null;
+        }
+        user.setXingming(blankToNull(xingming));
+        user.setXingbie(blankToNull(xingbie));
+        user.setLianxidianhua(blankToNull(lianxidianhua));
+        user.setTouxiang(blankToNull(touxiang));
+        userMapper.updateProfile(user);
+        return toAuthUser(userMapper.findById(userId));
+    }
+
     @Transactional
     public boolean deleteAccount(Long userId) {
         if (userId == null || userId <= 0) {
@@ -75,14 +88,14 @@ public class AuthService {
         if (userMapper.findById(userId) == null) {
             return false;
         }
-        jdbcTemplate.update("DELETE FROM cart WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM orders WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM address WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM storeup WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM chat WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM gallery WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM trips WHERE userid=?", userId);
-        return jdbcTemplate.update("DELETE FROM yonghu WHERE id=?", userId) > 0;
+        jdbcTemplate.update("DELETE FROM shopping_cart WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM purchase_orders WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM user_addresses WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM favorites WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM support_chats WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM user_gallery WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM trip_plans WHERE userid=?", userId);
+        return jdbcTemplate.update("DELETE FROM users WHERE id=?", userId) > 0;
     }
 
     private AuthUser toAuthUser(UserEntity u) {

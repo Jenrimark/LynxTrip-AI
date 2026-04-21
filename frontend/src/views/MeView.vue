@@ -2,51 +2,18 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchMe, getErrorMessage, isLoggedInRemote, logout, updatePassword as updatePasswordRemote } from '../services/auth'
 import {
-  listOrders,
-  listAddresses,
-  listStoreup,
-  addAddress,
-  setDefaultAddress,
-  updateOrderStatus,
-  removeOrder,
-  formatUserIdDisplay,
-  deleteUserAccount,
-} from '../services/lynxDb'
+  fetchMe,
+  getErrorMessage,
+  isLoggedInRemote,
+  logout,
+  updatePassword as updatePasswordRemote,
+  updateProfile as updateProfileRemote,
+} from '../services/auth'
+import { formatUserIdDisplay, deleteUserAccount } from '../services/lynxDb'
 
 const router = useRouter()
 const user = ref(null)
-const orders = ref([])
-const addresses = ref([])
-const storeups = ref([])
-
-const isAddAddrOpen = ref(false)
-const addrForm = ref({ name: '', phone: '', address: '', isdefault: '否' })
-const activeOrderTab = ref('all')
-
-const orderTabs = [
-  { key: 'all', label: '全部' },
-  { key: '未支付', label: '未支付' },
-  { key: '已支付', label: '已支付' },
-  { key: '已发货', label: '已发货' },
-  { key: '已完成', label: '已完成' },
-  { key: '已退款', label: '已退款' },
-  { key: '已取消', label: '已取消' },
-]
-
-async function refresh() {
-  try {
-    orders.value = await listOrders()
-    addresses.value = await listAddresses()
-    storeups.value = await listStoreup()
-  } catch {
-    orders.value = []
-    addresses.value = []
-    storeups.value = []
-  }
-}
-
 const userIdDisplay = computed(() => formatUserIdDisplay(user.value?.id))
 
 onMounted(async () => {
@@ -55,7 +22,6 @@ onMounted(async () => {
     return
   }
   user.value = await fetchMe(true)
-  await refresh()
 })
 
 const moneyText = computed(() => {
@@ -63,95 +29,25 @@ const moneyText = computed(() => {
   return m.toFixed(2)
 })
 
-const orderTabCount = computed(() =>
-  orderTabs.reduce((acc, tab) => {
-    acc[tab.key] = tab.key === 'all' ? orders.value.length : orders.value.filter((o) => String(o.status) === tab.key).length
-    return acc
-  }, {})
-)
-
-const filteredOrders = computed(() => {
-  if (activeOrderTab.value === 'all') return orders.value
-  return orders.value.filter((o) => String(o.status) === activeOrderTab.value)
-})
-
-function formatMoney(v) {
-  return Number(v || 0).toFixed(2)
-}
-
-function getOrderActions(status) {
-  if (status === '未支付') return ['去支付', '取消订单']
-  if (status === '已支付') return ['申请退款', '联系客服']
-  if (status === '已发货') return ['查看物流', '确认收货']
-  if (status === '已完成') return ['再次购买']
-  if (status === '已退款') return ['查看退款详情', '再次购买']
-  if (status === '已取消') return ['删除记录', '再次购买']
-  return ['联系客服']
-}
-
-async function handleOrderAction(order, action) {
-  const cur = Number(user.value?.id ?? 0)
-  if (action === '去支付') {
-    await updateOrderStatus(order.id, '已支付', cur)
-    ElMessage.success('订单已支付')
-    refresh()
-    return
-  }
-  if (action === '取消订单') {
-    await updateOrderStatus(order.id, '已取消', cur)
-    ElMessage.success('订单已取消')
-    refresh()
-    return
-  }
-  if (action === '申请退款') {
-    await updateOrderStatus(order.id, '已退款', cur)
-    ElMessage.success('退款申请已提交')
-    refresh()
-    return
-  }
-  if (action === '确认收货') {
-    await updateOrderStatus(order.id, '已完成', cur)
-    ElMessage.success('已确认收货')
-    refresh()
-    return
-  }
-  if (action === '删除记录') {
-    await removeOrder(order.id, cur)
-    ElMessage.success('订单记录已删除')
-    refresh()
-    return
-  }
-  ElMessage.info(`${action}功能待接入`)
-}
-
-function openAddAddr() {
-  isAddAddrOpen.value = true
-}
-
-async function saveAddr() {
-  if (!addrForm.value.name || !addrForm.value.phone || !addrForm.value.address) {
-    ElMessage.warning('请填写完整：收货人/电话/地址')
-    return
-  }
-  await addAddress({ userId: Number(user.value?.id ?? 0), ...addrForm.value })
-  isAddAddrOpen.value = false
-  addrForm.value = { name: '', phone: '', address: '', isdefault: '否' }
-  await refresh()
-  ElMessage.success('地址已保存')
-}
-
-async function chooseDefault(id) {
-  await setDefaultAddress(id, Number(user.value?.id ?? 0))
-  await refresh()
-  ElMessage.success('已设为默认地址')
-}
 
 const isPwdOpen = ref(false)
 const pwdForm = ref({ oldMima: '', newMima: '', newMima2: '' })
+const isProfileOpen = ref(false)
+const profileForm = ref({ xingming: '', xingbie: '', lianxidianhua: '', touxiang: '' })
 
 function openPwd() {
   pwdForm.value = { oldMima: '', newMima: '', newMima2: '' }
   isPwdOpen.value = true
+}
+
+function openProfile() {
+  profileForm.value = {
+    xingming: String(user.value?.xingming || ''),
+    xingbie: String(user.value?.xingbie || ''),
+    lianxidianhua: String(user.value?.lianxidianhua || ''),
+    touxiang: String(user.value?.touxiang || ''),
+  }
+  isProfileOpen.value = true
 }
 
 async function savePwd() {
@@ -171,6 +67,22 @@ async function savePwd() {
 
 function resetPwdForm() {
   pwdForm.value = { oldMima: '', newMima: '', newMima2: '' }
+}
+
+async function saveProfile() {
+  try {
+    const { user: nextUser } = await updateProfileRemote({
+      xingming: profileForm.value.xingming,
+      xingbie: profileForm.value.xingbie,
+      lianxidianhua: profileForm.value.lianxidianhua,
+      touxiang: profileForm.value.touxiang,
+    })
+    user.value = nextUser || user.value
+    isProfileOpen.value = false
+    ElMessage.success('资料已保存')
+  } catch (err) {
+    ElMessage.error(getErrorMessage(err, '资料保存失败'))
+  }
 }
 
 async function handleLogoutSession() {
@@ -218,6 +130,7 @@ async function handleLogoutAccount() {
             </div>
           </div>
           <div class="profile__actions">
+            <el-button type="primary" @click="openProfile">编辑资料</el-button>
             <el-button @click="openPwd">修改密码</el-button>
             <el-button type="primary" plain @click="handleLogoutSession">退出登录</el-button>
             <el-button type="danger" plain @click="handleLogoutAccount">注销账号</el-button>
@@ -253,101 +166,6 @@ async function handleLogoutAccount() {
       </div>
     </div>
 
-    <div class="layout">
-      <div class="panel lynx-card lynx-card--glass">
-        <div class="panel__hd">
-          <div class="panel__title">我的订单</div>
-        </div>
-
-        <div class="orderTabs">
-          <button
-            v-for="tab in orderTabs"
-            :key="tab.key"
-            type="button"
-            class="orderTab"
-            :class="{ 'orderTab--active': activeOrderTab === tab.key }"
-            @click="activeOrderTab = tab.key"
-          >
-            {{ tab.label }}（{{ orderTabCount[tab.key] || 0 }}）
-          </button>
-        </div>
-
-        <div v-if="!filteredOrders.length" class="panel__empty">
-          <el-empty description="暂无订单。可去「购物车」结算生成 orders。" />
-        </div>
-
-        <div v-else class="orderList">
-          <div v-for="o in filteredOrders" :key="o.id" class="order">
-            <el-image class="order__img" :src="o.picture" fit="cover" :alt="o.goodname" />
-            <div class="order__info">
-              <div class="order__head">
-                <div class="order__meta">订单编号：{{ o.orderid || '—' }}</div>
-                <span class="status">{{ o.status || '—' }}</span>
-              </div>
-              <div class="order__name">商品：{{ o.goodname }}</div>
-              <div class="order__grid">
-                <div class="order__meta">价格：¥ {{ formatMoney(o.price) }}</div>
-                <div class="order__meta">数量：{{ Number(o.buynumber || 1) }}</div>
-                <div class="order__meta">总价：¥ {{ formatMoney(o.total) }}</div>
-              </div>
-              <div class="order__meta">地址：{{ o.address || '—' }}</div>
-              <div class="order__actions">
-                <el-button
-                  v-for="action in getOrderActions(o.status)"
-                  :key="`${o.id}-${action}`"
-                  size="small"
-                  :type="action === '去支付' || action === '确认收货' ? 'primary' : undefined"
-                  @click="handleOrderAction(o, action)"
-                >
-                  {{ action }}
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <aside class="side">
-        <div class="panel lynx-card lynx-card--glass">
-          <div class="panel__hd">
-            <div class="panel__title">收货地址</div>
-            <el-button size="small" type="primary" @click="openAddAddr">新增</el-button>
-          </div>
-          <div v-if="!addresses.length" class="side__empty">暂无地址。</div>
-          <div v-else class="addrList">
-            <div v-for="a in addresses" :key="a.id" class="addr">
-              <div class="addr__top">
-                <div class="addr__name">{{ a.name }}</div>
-                <span v-if="a.isdefault === '是'" class="tag">默认</span>
-              </div>
-              <div class="addr__meta">{{ a.phone }}</div>
-              <div class="addr__text">{{ a.address }}</div>
-              <div class="addr__bottom">
-                <span class="addr__id">#{{ a.id }}</span>
-                <el-button size="small" text type="primary" @click="chooseDefault(a.id)">设为默认</el-button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel lynx-card lynx-card--glass">
-          <div class="panel__hd">
-            <div class="panel__title">我的收藏</div>
-          </div>
-          <div v-if="!storeups.length" class="side__empty">暂无收藏。</div>
-          <div v-else class="favList">
-            <div v-for="s in storeups.slice(0, 6)" :key="s.id" class="fav">
-              <el-image class="fav__img" :src="s.picture" fit="cover" :alt="s.name" />
-              <div class="fav__info">
-                <div class="fav__name">{{ s.name }}</div>
-                <div class="fav__meta">{{ s.tablename }} #{{ s.refid }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-    </div>
-
     <el-dialog v-model="isPwdOpen" title="修改密码" width="480px" @closed="resetPwdForm">
       <el-form label-position="top">
         <el-form-item label="当前密码">
@@ -366,31 +184,35 @@ async function handleLogoutAccount() {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="isAddAddrOpen" title="新增地址" width="560px">
+    <el-dialog v-model="isProfileOpen" title="编辑资料" width="560px">
       <el-form label-position="top">
         <div class="dialogRow">
-          <el-form-item label="收货人（name）">
-            <el-input v-model="addrForm.name" />
+          <el-form-item label="姓名">
+            <el-input v-model="profileForm.xingming" maxlength="64" />
           </el-form-item>
-          <el-form-item label="电话（phone）">
-            <el-input v-model="addrForm.phone" />
+          <el-form-item label="性别">
+            <el-select v-model="profileForm.xingbie" placeholder="请选择" clearable>
+              <el-option label="男" value="男" />
+              <el-option label="女" value="女" />
+              <el-option label="保密" value="保密" />
+            </el-select>
           </el-form-item>
         </div>
-        <el-form-item label="地址（address）">
-          <el-input v-model="addrForm.address" />
-        </el-form-item>
-        <el-form-item label="是否默认（isdefault）">
-          <el-radio-group v-model="addrForm.isdefault">
-            <el-radio label="是">是</el-radio>
-            <el-radio label="否">否</el-radio>
-          </el-radio-group>
-        </el-form-item>
+        <div class="dialogRow">
+          <el-form-item label="电话">
+            <el-input v-model="profileForm.lianxidianhua" maxlength="32" />
+          </el-form-item>
+          <el-form-item label="头像链接">
+            <el-input v-model="profileForm.touxiang" maxlength="255" placeholder="https://..." />
+          </el-form-item>
+        </div>
       </el-form>
       <template #footer>
-        <el-button @click="isAddAddrOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveAddr">保存</el-button>
+        <el-button @click="isProfileOpen = false">取消</el-button>
+        <el-button type="primary" @click="saveProfile">保存修改</el-button>
       </template>
     </el-dialog>
+
   </section>
 </template>
 

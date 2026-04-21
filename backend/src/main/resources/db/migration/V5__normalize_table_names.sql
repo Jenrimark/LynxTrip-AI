@@ -1,0 +1,12 @@
+RENAME TABLE yonghu TO users;
+RENAME TABLE address TO user_addresses;
+RENAME TABLE xianlufenlei TO route_categories;
+RENAME TABLE lvyouxianlu TO travel_routes;
+RENAME TABLE zuixinxianlu TO latest_routes;
+RENAME TABLE news TO travel_news;
+RENAME TABLE cart TO shopping_cart;
+RENAME TABLE orders TO purchase_orders;
+RENAME TABLE storeup TO favorites;
+RENAME TABLE chat TO support_chats;
+RENAME TABLE gallery TO user_gallery;
+RENAME TABLE trips TO trip_plans;

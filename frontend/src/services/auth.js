@@ -65,6 +65,13 @@ export async function updatePassword(oldMima, newMima) {
   return data
 }
 
+export async function updateProfile(payload) {
+  const { data } = await axios.patch('/api/auth/profile', payload, { withCredentials: true })
+  cachedMe = data?.user ?? cachedMe
+  meLoaded = true
+  return data
+}
+
 export async function deleteAccount() {
   await axios.delete('/api/auth/account', { withCredentials: true })
   cachedMe = null
