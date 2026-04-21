@@ -87,6 +87,7 @@ spring-boot-devtools.properties
 
 # ==================== Maven ====================
 backend/target/
+**/.m2/
 !.mvn/wrapper/maven-wrapper.jar
 .mvn/wrapper/maven-wrapper.properties
 pom.xml.tag
