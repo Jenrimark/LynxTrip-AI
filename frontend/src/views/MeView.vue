@@ -10,18 +10,46 @@ import {
   updatePassword as updatePasswordRemote,
   updateProfile as updateProfileRemote,
 } from '../services/auth'
-import { formatUserIdDisplay, deleteUserAccount } from '../services/lynxDb'
+import { formatUserIdDisplay, deleteUserAccount, listTrips, listStoreup, listRoutes, saveTrip, toggleStoreup } from '../services/lynxDb'
 
 const router = useRouter()
 const user = ref(null)
 const userIdDisplay = computed(() => formatUserIdDisplay(user.value?.id))
+const tripItems = ref([])
+const storeupItems = ref([])
+const travelTab = ref('trip')
+const seeding = ref(false)
+
+function normalizeRoute(routeItem) {
+  if (!routeItem) return null
+  return {
+    tablename: routeItem.__table || 'lvyouxianlu',
+    id: routeItem.id,
+    name: routeItem.xianlumingcheng || '未命名路线',
+    cover: routeItem.fengmiantu || '',
+    price: Number(routeItem.price || 0),
+    from: routeItem.chufadi || '',
+    to: routeItem.mudedi || '',
+    traffic: routeItem.jiaotongfangshi || '',
+    category: routeItem.xianlufenlei || '',
+  }
+}
+
+async function refreshTravel() {
+  const [trips, storeups] = await Promise.all([listTrips(), listStoreup()])
+  tripItems.value = Array.isArray(trips) ? trips : []
+  storeupItems.value = Array.isArray(storeups) ? storeups : []
+}
 
 onMounted(async () => {
   if (!(await isLoggedInRemote())) {
     router.replace({ name: 'login', query: { redirect: '/me' } })
     return
   }
-  user.value = await fetchMe(true)
+  const [nextUser, trips, storeups] = await Promise.all([fetchMe(true), listTrips(), listStoreup()])
+  user.value = nextUser
+  tripItems.value = Array.isArray(trips) ? trips : []
+  storeupItems.value = Array.isArray(storeups) ? storeups : []
 })
 
 const moneyText = computed(() => {
@@ -38,6 +66,167 @@ const realNameText = computed(() => {
 })
 
 const emailStatusText = computed(() => (userEmailText.value === '未绑定' ? '未绑定邮箱' : '邮箱已绑定'))
+const orderedTrips = computed(() => [...tripItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
+const orderedStoreups = computed(() => [...storeupItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
+const travelCards = computed(() => (travelTab.value === 'trip' ? orderedTrips.value : orderedStoreups.value))
+
+function travelCardTitle(item) {
+  return String(item?.title || item?.name || item?.goodname || '未命名记录')
+}
+
+function travelCardMeta(item) {
+  if (travelTab.value === 'trip') {
+    const days = Number(item?.payload?.days || 0)
+    return Number.isFinite(days) && days > 0 ? `${days} 天行程` : '行程记录'
+  }
+  const tablename = String(item?.tablename || '').trim()
+  return tablename ? `收藏于 ${tablename}` : '收藏记录'
+}
+
+function parsePlacesFromTitle(title) {
+  const text = String(title || '').trim()
+  if (!text) return []
+  const main = text.split('·')[0] || text
+  return main
+    .split('→')
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
+
+function placeLine(item) {
+  const p = item?.payload || {}
+  const from = String(p.departure || '').trim()
+  const to = String(p.destination || '').trim()
+  const places = []
+  if (from) places.push(from)
+  if (to && to !== from) places.push(to)
+  if (!places.length) places.push(...parsePlacesFromTitle(item?.title || item?.name || ''))
+  const unique = [...new Set(places)].slice(0, 3)
+  if (!unique.length) return '中国 🇨🇳'
+  return unique.map((x) => `${x} 🇨🇳`).join(' · ')
+}
+
+function preferenceTags(item) {
+  const p = item?.payload || {}
+  const tags = []
+  const pref = String(p.preference || '').trim()
+  if (pref) {
+    pref
+      .replace(/^多城市路线[:：]/, '')
+      .split(/[，,、/|；;\s]+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .forEach((x) => tags.push(x))
+  }
+  if (p.travelType) tags.push(String(p.travelType))
+  if (p.season) tags.push(`${p.season}季`)
+  const uniq = [...new Set(tags.filter(Boolean))]
+  return uniq
+}
+
+function preferenceTagsView(item, limit = 3) {
+  const all = preferenceTags(item)
+  const shown = all.slice(0, limit)
+  const hasMore = all.length > limit
+  return { shown, hasMore }
+}
+
+function daysLine(item) {
+  const p = item?.payload
+  const days = Number(p?.days || 0)
+  if (Number.isFinite(days) && days > 0) return `${days} 天`
+  return '—'
+}
+
+function createdDateLine(item) {
+  const raw = String(item?.addtime || '').trim()
+  if (!raw) return '—'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 10) || '—'
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function coverOf(item) {
+  const p = item?.payload
+  const rec = Array.isArray(p?.recommended) ? p.recommended : []
+  const first = rec.find((x) => x && x.cover) || rec[0]
+  return first?.cover || ''
+}
+
+async function createDemoData() {
+  if (seeding.value) return
+  seeding.value = true
+  try {
+    const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
+    const all = [...(a || []), ...(b || [])].filter(Boolean)
+    if (!all.length) {
+      ElMessage.warning('暂无可用路线数据，无法生成测试行程')
+      return
+    }
+
+    const pick = (i) => all[i % all.length]
+    const demos = [
+      {
+        title: '北京 → 西安文化漫游',
+        departure: '北京',
+        destination: '西安',
+        days: 3,
+        preference: '博物馆 历史街区 美食',
+        travelType: '文化深度游',
+      },
+      {
+        title: '上海 → 杭州周末轻旅',
+        departure: '上海',
+        destination: '杭州',
+        days: 2,
+        preference: '轻松 亲子 湖景',
+        travelType: '周末短途',
+      },
+      {
+        title: '广州 → 桂林山水线',
+        departure: '广州',
+        destination: '桂林',
+        days: 4,
+        preference: '自然风光 摄影 徒步',
+        travelType: '自然探索',
+      },
+    ]
+
+    for (let i = 0; i < demos.length; i += 1) {
+      const chosen = [pick(i * 2), pick(i * 2 + 1), pick(i * 2 + 2)].map(normalizeRoute).filter(Boolean)
+      // eslint-disable-next-line no-await-in-loop
+      await saveTrip({
+        title: `${demos[i].title} · ${demos[i].days}天`,
+        payload: {
+          ...demos[i],
+          people: 2,
+          budget: 4500 + i * 1200,
+          recommended: chosen,
+        },
+      })
+    }
+
+    const first = normalizeRoute(pick(0))
+    if (first) {
+      await toggleStoreup({
+        tablename: first.tablename,
+        refid: Number(first.id),
+        name: first.name,
+        picture: first.cover,
+      })
+    }
+
+    await refreshTravel()
+    ElMessage.success('已生成 3 条测试行程与 1 条收藏')
+  } catch {
+    ElMessage.error('测试数据生成失败，请稍后重试')
+  } finally {
+    seeding.value = false
+  }
+}
 
 async function handleCopyId() {
   if (!userIdDisplay.value || userIdDisplay.value === '000000') {
@@ -166,7 +355,64 @@ async function handleLogoutAccount() {
     </div>
 
     <div class="contentGrid">
-      <aside class="leftRail">
+      <div class="contentGrid__left">
+      <article class="travelPane">
+        <div class="travelPane__header">
+          <div class="travelPane__menu">
+            <button type="button" class="travelPane__tab" :class="{ 'is-active': travelTab === 'trip' }" @click="travelTab = 'trip'">
+              我的旅行
+            </button>
+            <button
+              type="button"
+              class="travelPane__tab"
+              :class="{ 'is-active': travelTab === 'storeup' }"
+              @click="travelTab = 'storeup'"
+            >
+              我的收藏
+            </button>
+            <button type="button" class="travelPane__seed" :disabled="seeding" @click="createDemoData">
+              {{ seeding ? '生成中…' : '创建测试数据' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="!travelCards.length" class="travelPane__empty">暂无内容</div>
+        <div v-else class="travelPane__grid">
+          <article v-for="item in travelCards" :key="`${travelTab}-${item.id}`" class="card lynx-card lynx-card--glass">
+            <div v-if="travelTab === 'trip'" class="card__media" :class="{ 'has-img': !!coverOf(item) }">
+              <el-image v-if="coverOf(item)" class="card__img" :src="coverOf(item)" fit="cover" :alt="travelCardTitle(item)">
+                <template #error>
+                  <div class="card__ph" aria-hidden="true" />
+                </template>
+              </el-image>
+              <div v-else class="card__ph" aria-hidden="true" />
+            </div>
+            <div v-else class="card__media">
+              <div class="card__ph" aria-hidden="true" />
+            </div>
+
+            <div class="card__body">
+              <div class="card__place">{{ travelTab === 'trip' ? placeLine(item) : travelCardTitle(item) }}</div>
+              <div class="card__tags">
+                <template v-if="travelTab === 'trip'">
+                  <span v-for="tag in preferenceTagsView(item).shown" :key="`${item.id}-${tag}`" class="tag">{{ tag }}</span>
+                  <span v-if="preferenceTagsView(item).hasMore" class="tag tag--muted">…</span>
+                  <span v-if="!preferenceTagsView(item).shown.length" class="tag tag--muted">我的偏爱标签</span>
+                </template>
+                <template v-else>
+                  <span class="tag">ref: {{ item.refid }}</span>
+                </template>
+              </div>
+              <div class="card__dayRow">
+                <div class="card__days">{{ travelTab === 'trip' ? daysLine(item) : '收藏项' }}</div>
+                <div class="card__date">{{ createdDateLine(item) }}</div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </article>
+      </div>
+
+      <aside class="contentGrid__right leftRail">
         <article class="railCard">
           <span class="label">余额</span>
           <strong class="money">¥ {{ moneyText }}</strong>
@@ -178,32 +424,6 @@ async function handleLogoutAccount() {
           <div class="fact"><span>邮箱状态</span><strong>{{ emailStatusText }}</strong></div>
         </article>
       </aside>
-
-      <article class="mainCard">
-        <div class="quickTabs">
-          <button type="button" class="quickTabs__item">我的行程</button>
-          <button type="button" class="quickTabs__item">账户安全</button>
-        </div>
-        <h3>功能导览</h3>
-        <p>进入你的灵犀旅行中枢，管理行程、收藏、订单和客服记录。</p>
-        <div class="moduleActions">
-          <button type="button">我的行程工作台</button>
-          <button type="button">收藏目的地</button>
-          <button type="button">订单与售后</button>
-          <button type="button">在线客服支持</button>
-        </div>
-      </article>
-
-      <article class="safeCard">
-        <h3>安全中心</h3>
-        <p>强化账号安全设置，保护你的旅行数据与支付信息。</p>
-        <ul class="safeList">
-          <li>实名状态：{{ realNameText }}</li>
-          <li>邮箱状态：{{ emailStatusText }}</li>
-          <li>建议：定期修改密码</li>
-        </ul>
-        <button class="safeBtn" type="button" @click="openPwd">立即设置</button>
-      </article>
     </div>
     </div>
 
@@ -405,11 +625,22 @@ async function handleLogoutAccount() {
   margin: 16px auto 0;
   margin-top: 16px;
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr) 220px;
+  grid-template-columns: 3fr 1fr;
   gap: 14px;
+  align-items: start;
+}
+
+.contentGrid__left {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.contentGrid__right {
+  grid-column: 2;
 }
 
 .leftRail {
+  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -455,94 +686,180 @@ async function handleLogoutAccount() {
   font-size: 13px;
 }
 
-.mainCard,
-.safeCard {
+.mainCard {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   padding: 18px;
 }
 
-.mainCard {
-  background: linear-gradient(130deg, #dbeafe, #ede9fe);
+.travelPane {
+  grid-column: 1;
+  align-self: start;
 }
-.quickTabs {
+.travelPane__header {
+  height: 82px;
+  margin-bottom: 10px;
+  position: relative;
+}
+.travelPane__header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  border: 1px solid var(--lynx-border);
+  background: radial-gradient(920px 320px at 20% 10%, rgba(249, 115, 22, 0.18), transparent 60%),
+    radial-gradient(920px 320px at 82% 28%, rgba(56, 189, 248, 0.14), transparent 60%),
+    rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  pointer-events: none;
+}
+.travelPane__menu {
+  position: absolute;
+  top: 20px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1;
+}
+.travelPane__tab {
+  height: 34px;
+  min-width: 108px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.travelPane__tab.is-active {
+  border-color: rgba(249, 115, 22, 0.42);
+  color: #7c2d12;
+  background: rgba(249, 115, 22, 0.14);
+}
+.travelPane__seed {
+  margin-left: auto;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(14, 165, 233, 0.32);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.travelPane__seed:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.travelPane__empty {
+  min-height: 170px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  color: #64748b;
+}
+.travelPane__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  overflow: hidden;
+  cursor: default;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+  border-color: rgba(255, 136, 57, 0.32);
+  background: rgba(255, 255, 255, 0.98);
+}
+.card__media {
+  position: relative;
+  height: 178px;
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.card__ph {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(520px 220px at 30% 20%, rgba(56, 189, 248, 0.18), transparent 60%),
+    radial-gradient(520px 220px at 80% 35%, rgba(249, 115, 22, 0.18), transparent 60%),
+    rgba(248, 250, 252, 1);
+}
+.card__img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.card__body {
+  padding: 14px 14px 12px;
+}
+.card__place {
+  font-size: 17px;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1.35;
+  letter-spacing: 0.1px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card__tags {
+  margin-top: 10px;
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
-.quickTabs__item {
-  height: 30px;
-  min-width: 124px;
-  border-radius: 8px;
-  border: 2px solid rgba(239, 68, 68, 0.7);
-  background: rgba(255, 255, 255, 0.9);
-  color: #1e293b;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.mainCard h3,
-.safeCard h3 {
-  margin: 0;
-  font-size: 36px;
-  line-height: 1;
-  font-weight: 900;
-  color: #3730a3;
-}
-
-.mainCard p,
-.safeCard p {
-  margin: 10px 0 0 0;
-  font-size: 14px;
-  color: #334155;
-  line-height: 1.6;
-}
-
-.moduleActions {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.moduleActions button {
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid rgba(79, 70, 229, 0.2);
-  background: rgba(255, 255, 255, 0.78);
-  color: #3730a3;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.safeCard {
-  background: linear-gradient(160deg, #f97316, #f59e0b);
-}
-
-.safeCard h3,
-.safeCard p {
-  color: #fff;
-}
-
-.safeBtn {
-  margin-top: 14px;
-  width: 100%;
-  height: 38px;
-  border: none;
+.tag {
+  height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: rgba(99, 102, 241, 0.08);
+  font-size: 11px;
   font-weight: 800;
-  color: #ea580c;
-  background: #fff;
-  cursor: pointer;
+  line-height: 1;
+  color: #4f46e5;
 }
-.safeList {
-  margin: 10px 0 0 0;
-  padding-left: 18px;
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.6;
+.tag--muted {
+  color: #64748b;
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.04);
+}
+.card__days {
+  font-size: 28px;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1;
+}
+.card__dayRow {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.card__date {
+  margin-left: auto;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
 }
 
 .dialogRow {
