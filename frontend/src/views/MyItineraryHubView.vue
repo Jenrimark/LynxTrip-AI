@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCurrentUserId, getUserById, listStoreup, listTrips } from '../services/lynxDb'
+import { ElMessage } from 'element-plus'
+import { getCurrentUserId, getUserById, listRoutes, listStoreup, listTrips, saveTrip, toggleStoreup } from '../services/lynxDb'
 import heroBg from '../assets/background.png'
 
 const router = useRouter()
@@ -9,6 +10,7 @@ const router = useRouter()
 const trips = ref([])
 const storeups = ref([])
 const activeMenu = ref('itinerary')
+const seeding = ref(false)
 
 function refresh() {
   Promise.all([listTrips(), listStoreup()]).then(([t, s]) => {
@@ -18,6 +20,93 @@ function refresh() {
 }
 
 onMounted(refresh)
+
+function normalizeRoute(routeItem) {
+  if (!routeItem) return null
+  return {
+    tablename: routeItem.__table || 'lvyouxianlu',
+    id: routeItem.id,
+    name: routeItem.xianlumingcheng || '未命名路线',
+    cover: routeItem.fengmiantu || '',
+    price: Number(routeItem.price || 0),
+    from: routeItem.chufadi || '',
+    to: routeItem.mudedi || '',
+    traffic: routeItem.jiaotongfangshi || '',
+    category: routeItem.xianlufenlei || '',
+  }
+}
+
+async function createDemoData() {
+  if (seeding.value) return
+  seeding.value = true
+  try {
+    const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
+    const all = [...a, ...b].filter(Boolean)
+    if (!all.length) {
+      ElMessage.warning('暂无可用路线数据，无法生成测试行程')
+      return
+    }
+
+    const pick = (i) => all[i % all.length]
+    const demos = [
+      {
+        title: '北京 → 西安文化漫游',
+        departure: '北京',
+        destination: '西安',
+        days: 3,
+        preference: '博物馆 历史街区 美食',
+        travelType: '文化深度游',
+      },
+      {
+        title: '上海 → 杭州周末轻旅',
+        departure: '上海',
+        destination: '杭州',
+        days: 2,
+        preference: '轻松 亲子 湖景',
+        travelType: '周末短途',
+      },
+      {
+        title: '广州 → 桂林山水线',
+        departure: '广州',
+        destination: '桂林',
+        days: 4,
+        preference: '自然风光 摄影 徒步',
+        travelType: '自然探索',
+      },
+    ]
+
+    for (let i = 0; i < demos.length; i += 1) {
+      const chosen = [pick(i * 2), pick(i * 2 + 1), pick(i * 2 + 2)].map(normalizeRoute).filter(Boolean)
+      // eslint-disable-next-line no-await-in-loop
+      await saveTrip({
+        title: `${demos[i].title} · ${demos[i].days}天`,
+        payload: {
+          ...demos[i],
+          people: 2,
+          budget: 4500 + i * 1200,
+          recommended: chosen,
+        },
+      })
+    }
+
+    const first = normalizeRoute(pick(0))
+    if (first) {
+      await toggleStoreup({
+        tablename: first.tablename,
+        refid: Number(first.id),
+        name: first.name,
+        picture: first.cover,
+      })
+    }
+
+    await refresh()
+    ElMessage.success('已生成 3 条测试行程与 1 条收藏')
+  } catch {
+    ElMessage.error('测试数据生成失败，请稍后重试')
+  } finally {
+    seeding.value = false
+  }
+}
 
 function goNew() {
   router.push({ name: 'create-trip' })
@@ -198,6 +287,9 @@ function iconPath(kind) {
       </button>
       <button class="miniMenu__item" :class="{ 'is-active': activeMenu === 'storeup' }" type="button" @click="activeMenu = 'storeup'">
         我的收藏
+      </button>
+      <button class="miniMenu__item miniMenu__item--seed" type="button" :disabled="seeding" @click="createDemoData">
+        {{ seeding ? '生成中...' : '创建测试数据' }}
       </button>
     </div>
 
@@ -477,6 +569,15 @@ function iconPath(kind) {
   color: #7c2d12;
   border-color: rgba(249, 115, 22, 0.35);
   background: rgba(249, 115, 22, 0.14);
+}
+.miniMenu__item--seed {
+  margin-left: auto;
+  border-color: rgba(14, 165, 233, 0.32);
+  color: #0369a1;
+}
+.miniMenu__item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .empty {
   padding: 18px;

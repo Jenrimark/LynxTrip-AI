@@ -29,6 +29,35 @@ const moneyText = computed(() => {
   return m.toFixed(2)
 })
 
+const userEmailText = computed(() => {
+  return String(user.value?.youxiang || user.value?.email || '未绑定')
+})
+
+const realNameText = computed(() => {
+  return String(user.value?.shimingrenzheng || '未认证')
+})
+
+const emailStatusText = computed(() => (userEmailText.value === '未绑定' ? '未绑定邮箱' : '邮箱已绑定'))
+
+async function handleCopyId() {
+  if (!userIdDisplay.value || userIdDisplay.value === '000000') {
+    ElMessage.warning('暂无可复制的用户ID')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(userIdDisplay.value)
+    ElMessage.success('用户ID已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+function handleGoRegister() {
+  logout().finally(() => {
+    router.replace({ name: 'login', query: { redirect: '/me' } })
+  })
+}
+
 
 const isPwdOpen = ref(false)
 const pwdForm = ref({ oldMima: '', newMima: '', newMima2: '' })
@@ -114,465 +143,406 @@ async function handleLogoutAccount() {
 
 <template>
   <section class="page">
-    <header class="hero lynx-card">
-      <div class="hero__left">
-        <h2 class="hero__title lynx-h">个人中心</h2>
-      </div>
-    </header>
-
-    <div class="top">
-      <div class="profile lynx-card lynx-card--glass profile--wide">
-        <div class="profile__top">
-          <div class="profile__intro">
-            <el-avatar class="profile__avatar" :size="88" :src="user?.touxiang" />
-            <div class="profile__introText">
-              <div class="profile__name">{{ user?.xingming || '未命名用户' }}</div>
-            </div>
-          </div>
-          <div class="profile__actions">
-            <el-button type="primary" @click="openProfile">编辑资料</el-button>
-            <el-button @click="openPwd">修改密码</el-button>
-            <el-button type="primary" plain @click="handleLogoutSession">退出登录</el-button>
-            <el-button type="danger" plain @click="handleLogoutAccount">注销账号</el-button>
-          </div>
-        </div>
-
-        <div class="profile__grid">
-          <div class="kv">
-            <span class="kv__k">用户ID</span>
-            <span class="kv__v kv__v--id">{{ userIdDisplay }}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__k">性别</span>
-            <span class="kv__v">{{ user?.xingbie || '—' }}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__k">用户名</span>
-            <span class="kv__v">{{ user?.yonghuming || '—' }}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__k">实名认证</span>
-            <span class="kv__v">{{ user?.shimingrenzheng || '未认证' }}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__k">电话</span>
-            <span class="kv__v">{{ user?.lianxidianhua || '—' }}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__k">余额</span>
-            <span class="kv__v kv__v--money">¥ {{ moneyText }}</span>
-          </div>
+    <div class="profilePage">
+      <div class="cover"></div>
+      <div class="identityCard">
+    <div class="profileInfo">
+      <div class="profileInfo__main">
+        <el-avatar class="el-avatar--circle avatar avatar--inline" :size="234" :src="user?.touxiang" />
+        <h2 class="name">{{ user?.xingming || '未命名用户' }}</h2>
+        <p class="line">性别 {{ user?.xingbie || '—' }} ｜ 用户ID {{ userIdDisplay }}</p>
+        <p class="line">电话 {{ user?.lianxidianhua || '—' }} ｜ 用户名 {{ user?.yonghuming || '—' }}</p>
+        <p class="desc">欢迎回来，{{ user?.yonghuming || '用户' }}。在这里可以统一管理账号信息、密码与安全操作。</p>
+        <div class="actionRow">
+          <button class="pill pill--primary" type="button" @click="openProfile">编辑资料</button>
+          <button class="pill" type="button" @click="openPwd">修改密码</button>
+          <button class="pill" type="button" @click="handleCopyId">复制ID</button>
+          <button class="pill pill--soft" type="button" @click="handleGoRegister">注册账号</button>
+          <button class="pill pill--soft" type="button" @click="handleLogoutSession">退出登录</button>
+          <button class="pill pill--danger" type="button" @click="handleLogoutAccount">注销账号</button>
         </div>
       </div>
     </div>
+    </div>
+
+    <div class="contentGrid">
+      <aside class="leftRail">
+        <article class="railCard">
+          <span class="label">余额</span>
+          <strong class="money">¥ {{ moneyText }}</strong>
+        </article>
+        <article class="railCard">
+          <span class="label">账户信息</span>
+          <div class="fact"><span>用户ID</span><strong>{{ userIdDisplay }}</strong></div>
+          <div class="fact"><span>实名认证</span><strong>{{ realNameText }}</strong></div>
+          <div class="fact"><span>邮箱状态</span><strong>{{ emailStatusText }}</strong></div>
+        </article>
+      </aside>
+
+      <article class="mainCard">
+        <div class="quickTabs">
+          <button type="button" class="quickTabs__item">我的行程</button>
+          <button type="button" class="quickTabs__item">账户安全</button>
+        </div>
+        <h3>功能导览</h3>
+        <p>进入你的灵犀旅行中枢，管理行程、收藏、订单和客服记录。</p>
+        <div class="moduleActions">
+          <button type="button">我的行程工作台</button>
+          <button type="button">收藏目的地</button>
+          <button type="button">订单与售后</button>
+          <button type="button">在线客服支持</button>
+        </div>
+      </article>
+
+      <article class="safeCard">
+        <h3>安全中心</h3>
+        <p>强化账号安全设置，保护你的旅行数据与支付信息。</p>
+        <ul class="safeList">
+          <li>实名状态：{{ realNameText }}</li>
+          <li>邮箱状态：{{ emailStatusText }}</li>
+          <li>建议：定期修改密码</li>
+        </ul>
+        <button class="safeBtn" type="button" @click="openPwd">立即设置</button>
+      </article>
+    </div>
+    </div>
 
     <el-dialog v-model="isPwdOpen" title="修改密码" width="480px" @closed="resetPwdForm">
-      <el-form label-position="top">
-        <el-form-item label="当前密码">
-          <el-input v-model="pwdForm.oldMima" type="password" show-password autocomplete="off" />
-        </el-form-item>
-        <el-form-item label="新密码">
-          <el-input v-model="pwdForm.newMima" type="password" show-password autocomplete="new-password" />
-        </el-form-item>
-        <el-form-item label="确认新密码">
-          <el-input v-model="pwdForm.newMima2" type="password" show-password autocomplete="new-password" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="isPwdOpen = false">取消</el-button>
-        <el-button type="primary" @click="savePwd">保存</el-button>
-      </template>
+    <el-form label-position="top">
+      <el-form-item label="当前密码">
+        <el-input v-model="pwdForm.oldMima" type="password" show-password autocomplete="off" />
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="pwdForm.newMima" type="password" show-password autocomplete="new-password" />
+      </el-form-item>
+      <el-form-item label="确认新密码">
+        <el-input v-model="pwdForm.newMima2" type="password" show-password autocomplete="new-password" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="isPwdOpen = false">取消</el-button>
+      <el-button type="primary" @click="savePwd">保存</el-button>
+    </template>
     </el-dialog>
 
     <el-dialog v-model="isProfileOpen" title="编辑资料" width="560px">
-      <el-form label-position="top">
-        <div class="dialogRow">
-          <el-form-item label="姓名">
-            <el-input v-model="profileForm.xingming" maxlength="64" />
-          </el-form-item>
-          <el-form-item label="性别">
-            <el-select v-model="profileForm.xingbie" placeholder="请选择" clearable>
-              <el-option label="男" value="男" />
-              <el-option label="女" value="女" />
-              <el-option label="保密" value="保密" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <div class="dialogRow">
-          <el-form-item label="电话">
-            <el-input v-model="profileForm.lianxidianhua" maxlength="32" />
-          </el-form-item>
-          <el-form-item label="头像链接">
-            <el-input v-model="profileForm.touxiang" maxlength="255" placeholder="https://..." />
-          </el-form-item>
-        </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="isProfileOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveProfile">保存修改</el-button>
-      </template>
+    <el-form label-position="top">
+      <div class="dialogRow">
+        <el-form-item label="姓名">
+          <el-input v-model="profileForm.xingming" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="性别">
+          <el-select v-model="profileForm.xingbie" placeholder="请选择" clearable>
+            <el-option label="男" value="男" />
+            <el-option label="女" value="女" />
+            <el-option label="保密" value="保密" />
+          </el-select>
+        </el-form-item>
+      </div>
+      <div class="dialogRow">
+        <el-form-item label="电话">
+          <el-input v-model="profileForm.lianxidianhua" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="头像链接">
+          <el-input v-model="profileForm.touxiang" maxlength="255" placeholder="https://..." />
+        </el-form-item>
+      </div>
+    </el-form>
+    <template #footer>
+      <el-button @click="isProfileOpen = false">取消</el-button>
+      <el-button type="primary" @click="saveProfile">保存修改</el-button>
+    </template>
     </el-dialog>
-
   </section>
 </template>
 
 <style scoped lang="scss">
 .page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
-}
-
-.hero {
-  padding: 18px;
-  border-radius: 18px;
-  background: radial-gradient(920px 320px at 20% 10%, rgba(249, 115, 22, 0.16), transparent 60%),
-    radial-gradient(920px 320px at 82% 28%, rgba(14, 165, 233, 0.14), transparent 60%),
-    rgba(255, 255, 255, 0.92);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-}
-.hero__kicker {
-  color: var(--lynx-muted);
-  font-size: 13px;
-}
-.hero__title {
-  margin: 6px 0;
-  font-size: 22px;
-  font-weight: 900;
-  color: #0f172a;
-}
-.hero__desc {
-  margin: 0;
-  color: #334155;
-  line-height: 1.7;
-  max-width: 70ch;
-  font-size: 13px;
-}
-.hero__switchLabel {
-  font-size: 12px;
-  color: #64748b;
-}
-.top {
   display: block;
+  margin: -24px -24px 0;
 }
 
-.profile {
-  border-radius: 18px;
-  padding: 16px;
+.profilePage {
+  position: relative;
+  overflow: visible;
+  --cover-height: 220px;
+  --avatar-size: 234px;
+  --golden: 0.618;
+  --hero-width: 75%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
-.profile--wide {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+
+.cover {
+  height: var(--cover-height, 220px);
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(135deg, rgba(7, 89, 133, 0.48), rgba(15, 23, 42, 0.2)),
+    url('../assets/background.png') center/cover no-repeat;
 }
-.profile__top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+
+.identityCard {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 24px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-top: none;
+  border-radius: 0;
 }
-.profile__intro {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  flex: 1;
-  min-width: min(100%, 280px);
-}
-.profile__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-  align-items: center;
-}
-.profile__avatar {
+
+.avatar {
+  border: 5px solid #fff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
   flex-shrink: 0;
 }
-.profile__introText {
-  min-width: 0;
-}
-.profile__name {
-  font-weight: 900;
-  color: #0f172a;
-  font-size: 18px;
-}
-.profile__sub {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #64748b;
-  line-height: 1.45;
-}
-.profile__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 12px;
-  align-content: start;
-}
-.kv {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.82);
-}
-.kv__k {
-  font-size: 11px;
-  font-weight: 800;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-.kv__v {
-  font-size: 14px;
-  font-weight: 800;
-  color: #0f172a;
-  word-break: break-word;
-}
-.kv__v--money {
-  font-size: 20px;
-  font-weight: 900;
-  color: #c2410c;
-}
-.kv__v--id {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  font-size: 15px;
+.avatar--inline {
+  width: var(--avatar-size, 234px) !important;
+  height: var(--avatar-size, 234px) !important;
 }
 
-.layout {
+.profileInfo {
+  width: 100%;
+  margin: 0;
+  margin-top: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 16px calc((100% - var(--hero-width, 75%)) / 2);
   display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+  gap: 16px;
+}
+.profileInfo__main {
+  position: relative;
+  min-width: 0;
+  width: 75%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 0;
+  padding-left: calc(var(--avatar-size, 234px) + 32px);
+  padding-top: 12px;
 }
 
-.panel {
-  border-radius: 18px;
-  padding: 12px;
+.profileInfo__main .avatar--inline {
+  position: absolute;
+  left: -10px;
+  top: -115px;
+  margin-right: 0;
 }
-.panel__hd {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 4px 12px 4px;
-}
-.panel__title {
+
+.name {
+  margin: 0 0 4px 0;
+  font-size: 42px;
+  line-height: 1;
   font-weight: 900;
   color: #0f172a;
 }
-.panel__hint {
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.5;
-  text-align: right;
-}
-.panel__empty {
-  padding: 10px;
+
+.line {
+  margin: 2px 0;
+  font-size: 14px;
+  color: #475569;
 }
 
-.orderTabs {
+.desc {
+  margin: 6px 0 0 0;
+  font-size: 14px;
+  color: #334155;
+}
+
+.actionRow {
+  margin-top: 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
 }
-.orderTab {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.82);
-  color: #334155;
+.actionRow--minor {
+  margin-top: 6px;
+}
+
+.pill {
+  height: 34px;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: #fff;
+  color: #0f172a;
+  padding: 0 14px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-}
-.orderTab:hover {
-  border-color: rgba(249, 115, 22, 0.35);
-  color: #7c2d12;
-}
-.orderTab--active {
-  color: #7c2d12;
-  border-color: rgba(249, 115, 22, 0.35);
-  background: rgba(255, 247, 237, 0.9);
+  transition: 0.2s ease;
 }
 
-.orderList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.order {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.86);
-  border-radius: 16px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: 84px 1fr;
-  gap: 10px;
-  align-items: center;
-}
-.order__img {
-  width: 84px;
-  height: 64px;
-  border-radius: 14px;
-}
-.order__info {
-  min-width: 0;
-}
-.order__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: center;
-}
-.order__name {
-  margin-top: 6px;
-  font-weight: 800;
-  color: #0f172a;
-  line-height: 1.25;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.order__meta {
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.5;
-}
-.order__grid {
-  margin-top: 6px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-.order__actions {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  color: #7c2d12;
-  border: 1px solid rgba(249, 115, 22, 0.22);
-  background: rgba(255, 255, 255, 0.92);
+.pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(14, 165, 233, 0.4);
 }
 
-.side {
-  display: flex;
-  flex-direction: column;
+.pill--primary {
+  background: #ea580c;
+  border-color: #ea580c;
+  color: #fff;
+}
+
+.pill--soft {
+  background: #f0f9ff;
+  color: #0c4a6e;
+}
+
+.pill--danger {
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #991b1b;
+}
+
+.contentGrid {
+  width: 75%;
+  margin: 16px auto 0;
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) 220px;
   gap: 14px;
-  position: sticky;
-  top: calc(56px + var(--space-lg));
 }
-.side__empty {
-  padding: 10px 6px;
+
+.leftRail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.railCard {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #ffffff;
+  padding: 14px;
+}
+
+.label {
+  display: block;
+  font-size: 14px;
   color: #64748b;
+}
+
+.money {
+  margin-top: 4px;
+  display: block;
+  font-size: 40px;
+  line-height: 1;
+  color: #991b1b;
+}
+
+.hint {
+  margin-top: 2px;
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+.fact {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+.fact strong {
+  color: #0f172a;
   font-size: 13px;
 }
 
-.addrList {
+.mainCard,
+.safeCard {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 18px;
+}
+
+.mainCard {
+  background: linear-gradient(130deg, #dbeafe, #ede9fe);
+}
+.quickTabs {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.addr {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.86);
-  border-radius: 16px;
-  padding: 10px;
-}
-.addr__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.addr__name {
-  font-weight: 900;
-  color: #0f172a;
-}
-.tag {
-  font-size: 12px;
-  font-weight: 900;
-  color: #7c2d12;
-  border: 1px solid rgba(249, 115, 22, 0.22);
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 999px;
-  padding: 2px 10px;
-}
-.addr__meta {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #64748b;
-}
-.addr__text {
-  margin-top: 8px;
-  color: #475569;
+.quickTabs__item {
+  height: 30px;
+  min-width: 124px;
+  border-radius: 8px;
+  border: 2px solid rgba(239, 68, 68, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e293b;
   font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mainCard h3,
+.safeCard h3 {
+  margin: 0;
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 900;
+  color: #3730a3;
+}
+
+.mainCard p,
+.safeCard p {
+  margin: 10px 0 0 0;
+  font-size: 14px;
+  color: #334155;
   line-height: 1.6;
 }
-.addr__bottom {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.addr__id {
-  font-size: 12px;
-  color: #94a3b8;
+
+.moduleActions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.favList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.fav {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.86);
-  border-radius: 16px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 10px;
-  align-items: center;
-}
-.fav__img {
-  width: 56px;
-  height: 44px;
-  border-radius: 12px;
-}
-.fav__name {
-  font-weight: 900;
-  color: #0f172a;
-  line-height: 1.25;
+.moduleActions button {
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: rgba(255, 255, 255, 0.78);
+  color: #3730a3;
   font-size: 13px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-weight: 700;
+  cursor: pointer;
 }
-.fav__meta {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #64748b;
+
+.safeCard {
+  background: linear-gradient(160deg, #f97316, #f59e0b);
+}
+
+.safeCard h3,
+.safeCard p {
+  color: #fff;
+}
+
+.safeBtn {
+  margin-top: 14px;
+  width: 100%;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  font-weight: 800;
+  color: #ea580c;
+  background: #fff;
+  cursor: pointer;
+}
+.safeList {
+  margin: 10px 0 0 0;
+  padding-left: 18px;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .dialogRow {
@@ -582,29 +552,80 @@ async function handleLogoutAccount() {
 }
 
 @media (max-width: 1200px) {
-  .layout {
+  .contentGrid {
     grid-template-columns: 1fr;
   }
-  .side {
-    position: relative;
-    top: 0;
+  .leftRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
   }
 }
 @media (max-width: 900px) {
-  .profile__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .profilePage {
+    --cover-height: 180px;
+    --avatar-size: 180px;
+    --hero-width: 100%;
+  }
+  .profileInfo,
+  .contentGrid {
+    width: 100%;
+  }
+  .profileInfo {
+    margin-top: 10px;
+    border-radius: 16px;
+    padding: 16px 14px;
+    grid-template-columns: 1fr;
+  }
+  .profileInfo__main {
+    width: 100%;
+    min-height: auto;
+    padding-left: 0;
+    padding-top: 0;
+  }
+  .profileInfo__main .avatar--inline {
+    position: static;
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+  .cover {
+    height: var(--cover-height);
+  }
+  .profileInfo {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .name {
+    font-size: 32px;
   }
 }
 @media (max-width: 520px) {
-  .profile__grid {
+  .page {
+    margin: -12px -12px 0;
+  }
+  .profilePage {
+    --avatar-size: 140px;
+  }
+  .identityCard {
+    padding: 0 0 14px;
+  }
+  .moduleActions {
     grid-template-columns: 1fr;
+  }
+  .quickTabs {
+    flex-direction: column;
+  }
+  .quickTabs__item {
+    width: 100%;
+  }
+  .leftRail {
+    grid-template-columns: 1fr;
+  }
+  .money {
+    font-size: 32px;
   }
 }
 @media (max-width: 720px) {
   .dialogRow {
-    grid-template-columns: 1fr;
-  }
-  .order__grid {
     grid-template-columns: 1fr;
   }
 }
