@@ -24,7 +24,7 @@ public class AuthService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public AuthUser register(String accountRaw, String password, String xingming, String xingbie) {
+    public AuthUser register(String accountRaw, String password, String displayName, String gender) {
         String account = normalizeAccount(accountRaw);
         if (!validAccount(account)) {
             throw new IllegalArgumentException("账号格式不正确");
@@ -33,14 +33,14 @@ public class AuthService {
             throw new IllegalStateException("账号已存在");
         }
         UserEntity user = new UserEntity();
-        user.setYonghuming(account);
-        user.setMima(encoder.encode(password));
-        user.setXingming(blankToNull(xingming));
-        user.setTouxiang("");
-        user.setXingbie(blankToNull(xingbie));
-        user.setLianxidianhua(PHONE_11.matcher(account).matches() ? account : null);
-        user.setMoney(BigDecimal.ZERO);
-        user.setShimingrenzheng("未认证");
+        user.setUsername(account);
+        user.setPassword(encoder.encode(password));
+        user.setDisplayName(blankToNull(displayName));
+        user.setAvatarUrl("");
+        user.setGender(blankToNull(gender));
+        user.setPhone(PHONE_11.matcher(account).matches() ? account : null);
+        user.setBalance(BigDecimal.ZERO);
+        user.setIdentityStatus("未认证");
         userMapper.insert(user);
         return toAuthUser(userMapper.findById(user.getId()));
     }
@@ -48,7 +48,7 @@ public class AuthService {
     public AuthUser login(String accountRaw, String password) {
         String account = normalizeAccount(accountRaw);
         UserEntity user = userMapper.findByAccount(account);
-        if (user == null || !encoder.matches(password, user.getMima())) {
+        if (user == null || !encoder.matches(password, user.getPassword())) {
             throw new IllegalArgumentException("账号或密码错误");
         }
         return toAuthUser(user);
@@ -61,21 +61,21 @@ public class AuthService {
 
     public boolean updatePassword(Long userId, String oldPassword, String newPassword) {
         UserEntity user = userMapper.findById(userId);
-        if (user == null || !encoder.matches(oldPassword, user.getMima())) {
+        if (user == null || !encoder.matches(oldPassword, user.getPassword())) {
             return false;
         }
         return userMapper.updatePassword(userId, encoder.encode(newPassword)) > 0;
     }
 
-    public AuthUser updateProfile(Long userId, String xingming, String xingbie, String lianxidianhua, String touxiang) {
+    public AuthUser updateProfile(Long userId, String displayName, String gender, String phone, String avatarUrl) {
         UserEntity user = userMapper.findById(userId);
         if (user == null) {
             return null;
         }
-        user.setXingming(blankToNull(xingming));
-        user.setXingbie(blankToNull(xingbie));
-        user.setLianxidianhua(blankToNull(lianxidianhua));
-        user.setTouxiang(blankToNull(touxiang));
+        user.setDisplayName(blankToNull(displayName));
+        user.setGender(blankToNull(gender));
+        user.setPhone(blankToNull(phone));
+        user.setAvatarUrl(blankToNull(avatarUrl));
         userMapper.updateProfile(user);
         return toAuthUser(userMapper.findById(userId));
     }
@@ -88,25 +88,25 @@ public class AuthService {
         if (userMapper.findById(userId) == null) {
             return false;
         }
-        jdbcTemplate.update("DELETE FROM shopping_cart WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM purchase_orders WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM user_addresses WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM favorites WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM support_chats WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM user_gallery WHERE userid=?", userId);
-        jdbcTemplate.update("DELETE FROM trip_plans WHERE userid=?", userId);
+        jdbcTemplate.update("DELETE FROM shopping_cart WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM purchase_orders WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM user_addresses WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM favorites WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM support_chats WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM user_gallery WHERE user_id=?", userId);
+        jdbcTemplate.update("DELETE FROM trip_plans WHERE user_id=?", userId);
         return jdbcTemplate.update("DELETE FROM users WHERE id=?", userId) > 0;
     }
 
     private AuthUser toAuthUser(UserEntity u) {
         return new AuthUser(
                 u.getId(),
-                u.getYonghuming(),
-                u.getXingming(),
-                u.getXingbie(),
-                u.getLianxidianhua(),
-                u.getShimingrenzheng(),
-                u.getTouxiang());
+                u.getUsername(),
+                u.getDisplayName(),
+                u.getGender(),
+                u.getPhone(),
+                u.getIdentityStatus(),
+                u.getAvatarUrl());
     }
 
     private static String normalizeAccount(String raw) {

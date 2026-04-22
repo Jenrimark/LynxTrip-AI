@@ -20,6 +20,8 @@ const form = ref({
 })
 const activeTab = ref('activities') // activities | map | edit | settings
 const result = ref(null)
+const generating = ref(false)
+const generateError = ref('')
 const citiesChain = ref([])
 const openDays = ref(new Set([1]))
 const editableRows = ref([])
@@ -51,11 +53,78 @@ const budget = computed(() => {
   return m ? Number(m[0]) : 0
 })
 
-const headerTitle = computed(() => result.value?.title || `${form.value.departure || '出发地'} → ${form.value.destination || '目的地'}`)
-const headerDays = computed(() => Number(result.value?.days || form.value.days || 1))
+function cleanPlace(raw) {
+  const text = String(raw || '').trim()
+  if (!text) return ''
+  return text.split(' - ')[0].trim() || text
+}
+
+function multiTripTitleFromQuery() {
+  const mode = String(route.query.mode || '')
+  if (mode !== 'multi') return ''
+  const direct = String(route.query.tripTitle || '').trim()
+  if (direct) return direct
+  const planner = String(route.query.plannerInput || '').trim()
+  if (!planner) return ''
+  const first = planner.split('；')[0].trim()
+  return first
+}
+
+const headerTitle = computed(() => {
+  const multiTitle = multiTripTitleFromQuery()
+  if (multiTitle) return multiTitle
+  if (result.value?.trip_title) return result.value.trip_title
+  if (result.value?.title) return result.value.title // 兼容旧 payload
+  const from = cleanPlace(form.value.departure || '')
+  const to = cleanPlace(form.value.destination || '')
+  if (from && (!to || to === from)) return from
+  if (!from && to) return to
+  return `${from || '出发地'} → ${to || '目的地'}`
+})
+const headerDays = computed(() => Number(result.value?.total_days || result.value?.days || form.value.days || 1))
 
 const itineraryDays = computed(() => {
   if (!result.value) return []
+
+  // 新 schema（AI 输出）
+  if (Array.isArray(result.value?.itinerary)) {
+    return result.value.itinerary.map((d, idx) => {
+      const dayNo = Number(d?.day_number || idx + 1) || idx + 1
+      const city = String(d?.city || '').trim()
+      const dayTheme = String(d?.day_theme || '').trim()
+      const html = String(d?.html_content || '').trim()
+      const activities = (Array.isArray(d?.activities) ? d.activities : []).map((a, aIdx) => {
+        const slot = String(a?.time_period || '').trim() || '上午'
+        const name = String(a?.activity_name || '').trim()
+        const desc = String(a?.activity_description || '').trim()
+        return {
+          idKey: `ai-${dayNo}-${aIdx}`,
+          slot,
+          name,
+          desc,
+          location: city || form.value.destination || '中国',
+          tablename: null,
+          id: null,
+          from: '',
+          to: city || '',
+          traffic: '',
+          __raw: a,
+        }
+      })
+      return {
+        dayNo,
+        title: `天 ${dayNo}`,
+        location: city || form.value.destination || '中国',
+        city,
+        dayTheme,
+        html,
+        activities,
+        __raw: d,
+      }
+    })
+  }
+
+  // 旧 schema 兼容（历史保存的假数据 payload）
   const totalDays = Math.max(1, Number(result.value.days || 1))
   const slots = ['上午', '中午', '下午', '傍晚']
   return Array.from({ length: totalDays }, (_, i) => {
@@ -68,7 +137,7 @@ const itineraryDays = computed(() => {
         idKey: `${item.id}-${idx}-${dayNo}`,
       }))
     const location = activities[0]?.to || result.value.destination || '中国'
-    return { dayNo, title: `天 ${dayNo}`, location, activities }
+    return { dayNo, title: `天 ${dayNo}`, location, activities, html: '' }
   })
 })
 
@@ -321,57 +390,74 @@ function parseBudget(raw) {
   return m ? Number(m[0]) : 0
 }
 
-function pickRoutes() {
-  const kw = `${form.value.departure} ${form.value.destination} ${form.value.preference}`.toLowerCase()
-  const maxBudget = budget.value
-  return allRoutes.value
-    .filter((r) => (maxBudget ? Number(r.price || 0) <= maxBudget : true))
-    .map((r) => {
-      const hay = [r.xianlumingcheng, r.chufadi, r.mudedi, r.xianlufenlei, r.jingdianmingcheng]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      const score = (kw && hay.includes(kw) ? 10 : 0) + Math.min(10, Number(r.clicknum || 0) / 3)
-      return { r, score }
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 12)
-    .map((x) => x.r)
-}
-
-function buildPlanFromForm() {
-  const picks = pickRoutes()
-  return {
-    title: `${form.value.departure || '出发地'} → ${form.value.destination || '目的地'}`,
-    departure: form.value.departure,
-    destination: form.value.destination,
-    days: Math.max(1, Number(form.value.days || 1)),
-    people: Number(form.value.people || 1),
-    budget: parseBudget(form.value.budgetText),
-    preference: form.value.preference,
-    recommended: picks.map((p) => ({
-      tablename: p.__table || 'lvyouxianlu',
-      id: p.id,
-      name: p.xianlumingcheng,
-      cover: p.fengmiantu,
-      price: p.price,
-      from: p.chufadi,
-      to: p.mudedi,
-      traffic: p.jiaotongfangshi,
-      category: p.xianlufenlei,
-    })),
-  }
-}
-
 async function generate() {
-  result.value = buildPlanFromForm()
-  const firstDays = itineraryDays.value.map((d) => d.dayNo)
-  openDays.value = new Set(firstDays.slice(0, 1))
-  await saveTrip({
-    title: `${result.value.title} · ${result.value.days}天`,
-    payload: result.value,
-  })
-  ElMessage.success('已生成并保存行程')
+  if (generating.value) return
+  generating.value = true
+  generateError.value = ''
+  try {
+    const q = route.query || {}
+    const mode = String(q.mode || '')
+
+    const reqBody = {}
+    if (mode === 'multi') {
+      const cities = String(q.cities || '')
+        .split('|')
+        .map((x) => x.trim())
+        .filter(Boolean)
+      const daysList = String(q.days || '')
+        .split('|')
+        .map((x) => Number(x) || 1)
+      const stops = cities.map((c, idx) => ({ city: c, days: String(daysList[idx] || 1) }))
+      reqBody.stops = stops
+      reqBody.title = String(q.tripTitle || '').trim()
+      reqBody.description = String(q.plannerInput || '').trim()
+      // interests 暂时用字符串偏好兜底（后端会 optStringList 拆分）
+      const prefText = String(form.value.preference || '').trim()
+      if (prefText) reqBody.interests = prefText
+    } else {
+      reqBody.destination = String(q.destination || form.value.destination || '').trim()
+      reqBody.departure = String(q.departure || form.value.departure || '').trim()
+      reqBody.days = Number(q.days || form.value.days || 1)
+      reqBody.preference = String(form.value.preference || '').trim()
+      reqBody.plannerInput = String(q.plannerInput || form.value.plannerInput || '').trim()
+    }
+
+    const { data } = await axios.post('/api/ai/trip/generate', reqBody, { timeout: 120000, withCredentials: true })
+    if (!data?.ok || !data?.plan) {
+      const msg = String(data?.error || '生成失败')
+      generateError.value = msg
+      ElMessage.error(msg)
+      return
+    }
+
+    result.value = data.plan
+
+    // 根据 AI 结果回填表单（用于 header / 地图等）
+    if (Array.isArray(result.value?.itinerary) && result.value.itinerary.length) {
+      const firstCity = String(result.value.itinerary[0]?.city || '').trim()
+      const lastCity = String(result.value.itinerary[result.value.itinerary.length - 1]?.city || '').trim()
+      if (firstCity) form.value.departure = firstCity
+      if (lastCity) form.value.destination = lastCity
+      form.value.days = Math.max(1, Number(result.value.total_days || form.value.days || 1))
+    }
+
+    const firstDays = itineraryDays.value.map((d) => d.dayNo)
+    openDays.value = new Set(firstDays.slice(0, 1))
+
+    // 保存到 trips（复用现有 /api/data/trips）
+    await saveTrip({
+      title: `${result.value.trip_title || headerTitle.value} · ${result.value.total_days || headerDays.value}天`,
+      payload: result.value,
+    })
+
+    ElMessage.success('已生成并保存行程')
+  } catch (e) {
+    const msg = axios.isAxiosError(e) ? String(e.response?.data?.error || e.message || '生成失败') : '生成失败'
+    generateError.value = msg
+    ElMessage.error(msg)
+  } finally {
+    generating.value = false
+  }
 }
 
 function hydrateEditableRows() {
@@ -379,13 +465,13 @@ function hydrateEditableRows() {
   itineraryDays.value.forEach((day) => {
     day.activities.forEach((a, idx) => {
       rows.push({
-        id: `${day.dayNo}-${idx}-${a.id}`,
+        id: `${day.dayNo}-${idx}-${a.id || a.idKey || 'x'}`,
         dayNo: day.dayNo,
         order: idx + 1,
         name: a.name || '',
-        desc: `${a.from || ''} → ${a.to || ''} · ${a.traffic || ''}`.trim(),
+        desc: String(a.desc || `${a.from || ''} → ${a.to || ''} · ${a.traffic || ''}`).trim(),
         slot: a.slot || '上午',
-        location: a.to || a.from || '',
+        location: a.location || a.to || a.from || '',
       })
     })
   })
@@ -397,19 +483,61 @@ watch(itineraryDays, hydrateEditableRows, { immediate: true })
 function saveEditedRows() {
   if (!result.value) return
   const sorted = [...editableRows.value].sort((a, b) => Number(a.dayNo) - Number(b.dayNo) || Number(a.order) - Number(b.order))
-  result.value.recommended = sorted.map((r, idx) => ({
-    tablename: 'lvyouxianlu',
-    id: Date.now() + idx,
-    name: r.name || `活动${idx + 1}`,
-    cover: '',
-    price: 0,
-    from: form.value.departure || '',
-    to: r.location || form.value.destination || '',
-    traffic: '',
-    category: '行程活动',
-  }))
+
+  // 新 schema：把编辑表格回写到 itinerary / html_content
+  if (Array.isArray(result.value?.itinerary)) {
+    const totalDays = Math.max(1, Number(result.value.total_days || result.value.itinerary.length || 1))
+    const byDay = new Map()
+    for (let i = 1; i <= totalDays; i++) byDay.set(i, [])
+    sorted.forEach((r) => {
+      const dayNo = Math.max(1, Number(r.dayNo || 1))
+      if (!byDay.has(dayNo)) byDay.set(dayNo, [])
+      byDay.get(dayNo).push(r)
+    })
+    for (const [dayNo, list] of byDay.entries()) {
+      list.sort((a, b) => Number(a.order) - Number(b.order))
+      const dayIdx = dayNo - 1
+      const day = result.value.itinerary[dayIdx] || {}
+      const city = String(day.city || form.value.destination || '中国')
+      const theme = String(day.day_theme || '当日行程')
+      const acts = list.map((r, idx) => ({
+        order: idx + 1,
+        time_period: String(r.slot || '上午'),
+        activity_name: String(r.name || `活动${idx + 1}`),
+        activity_description: String(r.desc || '').trim() || `在 ${String(r.location || city)} 进行活动安排`,
+      }))
+      const cards = acts
+        .map(
+          (a) =>
+            `<div class="card activity-card"><h3 class="card-title">${a.time_period} | ${a.activity_name}</h3><p class="card-desc">${a.activity_description}</p></div>`,
+        )
+        .join('')
+      const html = `<section class="day-section"><div class="day-header">Day ${dayNo}: ${city} - ${theme}</div><div class="activities-container">${cards}</div></section>`
+      result.value.itinerary[dayIdx] = {
+        day_number: dayNo,
+        city,
+        day_theme: theme,
+        html_content: html,
+        activities: acts,
+      }
+    }
+  } else {
+    // 旧 schema：保持原逻辑
+    result.value.recommended = sorted.map((r, idx) => ({
+      tablename: 'lvyouxianlu',
+      id: Date.now() + idx,
+      name: r.name || `活动${idx + 1}`,
+      cover: '',
+      price: 0,
+      from: form.value.departure || '',
+      to: r.location || form.value.destination || '',
+      traffic: '',
+      category: '行程活动',
+    }))
+  }
+
   saveTrip({
-    title: `${result.value.title} · ${result.value.days}天`,
+    title: `${headerTitle.value} · ${headerDays.value}天`,
     payload: result.value,
   })
   ElMessage.success('编辑内容已保存')
@@ -432,6 +560,10 @@ function addRow() {
 }
 
 async function addToCart(rec) {
+  if (!rec || !rec.tablename || rec.id == null) {
+    ElMessage.warning('该活动为 AI 生成内容，暂不支持加入购物车')
+    return
+  }
   const good = allRoutes.value.find((r) => Number(r.id) === Number(rec.id))
   if (!good) return
   await upsertCartItem({ tablename: rec.tablename || 'lvyouxianlu', good })
@@ -627,11 +759,17 @@ async function hydrateFromQuery() {
     const hit = rows.find((t) => String(t.id) === tripId)
     if (hit?.payload) {
       result.value = hit.payload
-      const from = String(hit.payload.departure || hit.payload.from || '').trim()
-      const to = String(hit.payload.destination || hit.payload.to || '').trim()
+      const from = String(hit.payload.departure || hit.payload.from || hit.payload.itinerary?.[0]?.city || '').trim()
+      const to = String(
+        hit.payload.destination ||
+          hit.payload.to ||
+          hit.payload.itinerary?.[Math.max(0, (hit.payload.itinerary?.length || 1) - 1)]?.city ||
+          '',
+      ).trim()
       if (from) form.value.departure = from
       if (to) form.value.destination = to
-      if (Number(hit.payload.days) > 0) form.value.days = Number(hit.payload.days)
+      if (Number(hit.payload.total_days) > 0) form.value.days = Number(hit.payload.total_days)
+      else if (Number(hit.payload.days) > 0) form.value.days = Number(hit.payload.days)
       return
     }
   }
@@ -725,7 +863,15 @@ watch(itineraryDays, () => {
       </div>
 
       <div v-if="activeTab === 'activities'" class="panelArea">
-        <div v-if="!itineraryDays.length" class="emptyHint">暂无行程，先生成或从历史进入。</div>
+        <div v-if="generating" class="genMask" aria-live="polite">
+          <div class="genBox">
+            <div class="spinner" aria-hidden="true" />
+            <div class="genTitle">正在生成行程…</div>
+            <div class="genSub">已接入灵犀行程引擎，请稍候返回结果</div>
+          </div>
+        </div>
+        <div v-else-if="generateError" class="emptyHint">{{ generateError }}</div>
+        <div v-else-if="!itineraryDays.length" class="emptyHint">暂无行程，先生成或从历史进入。</div>
         <article v-for="day in itineraryDays" :key="day.dayNo" class="dayCard" :class="{ open: isDayOpen(day.dayNo) }">
           <header class="dayHeader" @click="toggleDay(day.dayNo)">
             <div class="dayHeader__title">
@@ -735,14 +881,17 @@ watch(itineraryDays, () => {
             <button class="collapseBtn">{{ isDayOpen(day.dayNo) ? '▼' : '▶' }}</button>
           </header>
           <div v-if="isDayOpen(day.dayNo)" class="dayBody">
-            <div v-for="a in day.activities" :key="a.idKey" class="actItem">
-              <div class="actItem__head">{{ a.slot }}：{{ a.name }}</div>
-              <div class="actItem__desc">{{ a.from || '—' }} → {{ a.to || '—' }} · {{ a.traffic || '交通待定' }}</div>
-              <div class="actItem__ops">
-                <button class="minor">购买活动</button>
-                <button class="minor">图片</button>
-                <button class="minor">Videos</button>
-                <button class="minor" @click="addToCart(a)">加入购物车</button>
+            <div v-if="day.html" class="aiHtml" v-html="day.html" />
+            <div v-else>
+              <div v-for="a in day.activities" :key="a.idKey" class="actItem">
+                <div class="actItem__head">{{ a.slot }}：{{ a.name }}</div>
+                <div class="actItem__desc">{{ a.desc || `${a.from || '—'} → ${a.to || '—'} · ${a.traffic || '交通待定'}` }}</div>
+                <div class="actItem__ops">
+                  <button class="minor">购买活动</button>
+                  <button class="minor">图片</button>
+                  <button class="minor">Videos</button>
+                  <button class="minor" @click="addToCart(a)">加入购物车</button>
+                </div>
               </div>
             </div>
           </div>
@@ -854,8 +1003,84 @@ watch(itineraryDays, () => {
   border-bottom: 2px solid transparent;
 }
 .tab.is-active { color: #ff8839; background: #fff; border-bottom-color: #ff8839; }
-.panelArea { min-height: 180px; }
+.panelArea { min-height: 180px; position: relative; }
 .emptyHint { color: #64748b; font-size: 13px; padding: 12px; }
+
+.genMask {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+.genBox {
+  width: min(520px, 92%);
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  text-align: center;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(249, 115, 22, 0.18);
+  border-top-color: rgba(249, 115, 22, 0.95);
+  margin: 0 auto 10px;
+  animation: spin 0.9s linear infinite;
+}
+.genTitle {
+  font-weight: 900;
+  color: #0f172a;
+}
+.genSub {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.aiHtml :deep(.day-section) {
+  margin-top: 6px;
+}
+.aiHtml :deep(.day-header) {
+  font-weight: 900;
+  color: #0f172a;
+  margin: 10px 0 10px;
+}
+.aiHtml :deep(.activities-container) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aiHtml :deep(.card.activity-card) {
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.aiHtml :deep(.card-title) {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 900;
+  color: #0f172a;
+}
+.aiHtml :deep(.card-desc) {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #475569;
+}
 
 .dayCard { border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 12px; background: #fff; margin-bottom: 12px; overflow: hidden; }
 .dayHeader { height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }

@@ -1,7 +1,9 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 const BAIDU_MAP_AK = import.meta.env.VITE_BAIDU_MAP_AK || ''
+const route = useRoute()
 const mapWrapRef = ref(null)
 const mapHostRef = ref(null)
 const mapReady = ref(false)
@@ -20,6 +22,10 @@ let mapInstance = null
 let baiduMapLoader = null
 let resizeObserver = null
 let resizeRaf = 0
+let focusMarker = null
+let routeMarkers = []
+let routeOverlays = []
+let moveAnimRaf = 0
 
 function loadBaiduMapSdk() {
   if (typeof window === 'undefined') return Promise.reject(new Error('当前环境不支持地图加载'))
@@ -124,6 +130,202 @@ async function initMap() {
   }
 }
 
+function setFocusPoint(lng, lat, label = '') {
+  if (!mapInstance || !window.BMapGL) return
+  const BMapGL = window.BMapGL
+  const point = new BMapGL.Point(lng, lat)
+  smoothMoveTo(point, 12)
+  try {
+    if (focusMarker) {
+      mapInstance.removeOverlay(focusMarker)
+      focusMarker = null
+    }
+    focusMarker = new BMapGL.Marker(point)
+    mapInstance.addOverlay(focusMarker)
+    if (label) {
+      const labelObj = new BMapGL.Label(label, { offset: new BMapGL.Size(18, -10) })
+      focusMarker.setLabel(labelObj)
+    }
+  } catch {
+    // ignore marker failures
+  }
+}
+
+function getDistanceMeters(a, b) {
+  if (!a || !b) return 0
+  try {
+    if (typeof mapInstance?.getDistance === 'function') {
+      const d = Number(mapInstance.getDistance(a, b))
+      if (Number.isFinite(d)) return d
+    }
+  } catch {
+    // ignore
+  }
+  const toRad = (x) => (x * Math.PI) / 180
+  const lat1 = toRad(Number(a.lat))
+  const lat2 = toRad(Number(b.lat))
+  const dLat = lat2 - lat1
+  const dLng = toRad(Number(b.lng) - Number(a.lng))
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+function smoothMoveTo(targetPoint, targetZoom = 12) {
+  if (!mapInstance || !targetPoint) return
+  if (moveAnimRaf) cancelAnimationFrame(moveAnimRaf)
+  const start = mapInstance.getCenter?.()
+  if (!start) {
+    mapInstance.centerAndZoom?.(targetPoint, targetZoom)
+    return
+  }
+  const startZoom = Number(mapInstance.getZoom?.() || 6)
+  const distM = Math.max(0, getDistanceMeters(start, targetPoint))
+  const totalMs = Math.max(1000, Math.min(4200, 1000 + distM / 260))
+  const zoomDip = distM > 300000 ? 2.2 : distM > 100000 ? 1.4 : 0.8
+  const sLng = Number(start.lng)
+  const sLat = Number(start.lat)
+  const tLng = Number(targetPoint.lng)
+  const tLat = Number(targetPoint.lat)
+  if (![sLng, sLat, tLng, tLat].every((x) => Number.isFinite(x))) {
+    mapInstance.setCenter?.(targetPoint)
+    mapInstance.setZoom?.(targetZoom)
+    return
+  }
+  const startTs = performance.now()
+  const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2)
+  const tick = (ts) => {
+    const p = Math.max(0, Math.min(1, (ts - startTs) / totalMs))
+    const eased = easeInOutCubic(p)
+    const curLng = sLng + (tLng - sLng) * eased
+    const curLat = sLat + (tLat - sLat) * eased
+    const curPoint = new window.BMapGL.Point(curLng, curLat)
+    const dip = Math.sin(Math.PI * p) * zoomDip
+    const curZoom = startZoom + (targetZoom - startZoom) * eased - dip
+    // 先 zoom 再 center，避免“只缩放不平移”
+    mapInstance.setZoom?.(Math.max(3, curZoom))
+    mapInstance.setCenter?.(curPoint)
+    if (p < 1) {
+      moveAnimRaf = requestAnimationFrame(tick)
+      return
+    }
+    // 动画结束后强制对齐目标点，避免任何像素级偏差
+    mapInstance.centerAndZoom?.(targetPoint, targetZoom)
+    requestAnimationFrame(() => mapInstance?.centerAndZoom?.(targetPoint, targetZoom))
+    moveAnimRaf = 0
+  }
+  moveAnimRaf = requestAnimationFrame(tick)
+}
+
+function clearRouteOverlays() {
+  if (!mapInstance) return
+  try {
+    routeMarkers.forEach((x) => mapInstance.removeOverlay(x))
+    routeOverlays.forEach((x) => mapInstance.removeOverlay(x))
+  } catch {
+    // ignore
+  }
+  routeMarkers = []
+  routeOverlays = []
+}
+
+function parseFocusPath(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((x) => ({
+        name: String(x?.name || ''),
+        lng: Number(x?.lng),
+        lat: Number(x?.lat),
+      }))
+      .filter((x) => Number.isFinite(x.lng) && Number.isFinite(x.lat))
+  } catch {
+    return []
+  }
+}
+
+function renderFocusPath(points) {
+  if (!mapInstance || !window.BMapGL || !points.length) return
+  const BMapGL = window.BMapGL
+  clearRouteOverlays()
+  if (focusMarker) {
+    try {
+      mapInstance.removeOverlay(focusMarker)
+    } catch {
+      // ignore
+    }
+    focusMarker = null
+  }
+
+  points.forEach((p, idx) => {
+    const pt = new BMapGL.Point(p.lng, p.lat)
+    const marker = new BMapGL.Marker(pt)
+    mapInstance.addOverlay(marker)
+    const numberLabel = new BMapGL.Label(String(idx + 1), { position: pt, offset: new BMapGL.Size(12, -20) })
+    numberLabel.setStyle({
+      color: '#ffffff',
+      fontSize: '12px',
+      fontWeight: '900',
+      lineHeight: '18px',
+      textAlign: 'center',
+      minWidth: '18px',
+      height: '18px',
+      borderRadius: '999px',
+      border: '1px solid rgba(255,255,255,0.92)',
+      background: 'rgba(220, 38, 38, 0.95)',
+      boxShadow: '0 4px 12px rgba(15, 23, 42, 0.28)',
+      padding: '0 4px',
+    })
+    mapInstance.addOverlay(numberLabel)
+    routeMarkers.push(marker)
+    routeOverlays.push(numberLabel)
+  })
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const from = new BMapGL.Point(Number(points[i].lng), Number(points[i].lat))
+    const to = new BMapGL.Point(Number(points[i + 1].lng), Number(points[i + 1].lat))
+    const line = new BMapGL.Polyline([from, to], {
+      strokeColor: '#0ea5e9',
+      strokeWeight: 4,
+      strokeOpacity: 0.8,
+    })
+    mapInstance.addOverlay(line)
+    routeOverlays.push(line)
+  }
+
+  const last = points[points.length - 1]
+  setFocusPoint(last.lng, last.lat, last.name || '')
+}
+
+watch(
+  () => [route.query.focusLng, route.query.focusLat, route.query.focusLabel, route.query.focusPath],
+  async () => {
+    const pathPoints = parseFocusPath(route.query.focusPath)
+    if (pathPoints.length) {
+      if (!mapReady.value) {
+        await nextTick()
+        await initMap()
+      }
+      renderFocusPath(pathPoints)
+      return
+    }
+    clearRouteOverlays()
+    const lng = Number(route.query.focusLng)
+    const lat = Number(route.query.focusLat)
+    const label = typeof route.query.focusLabel === 'string' ? route.query.focusLabel : ''
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return
+    if (!mapReady.value) {
+      await nextTick()
+      await initMap()
+    }
+    setFocusPoint(lng, lat, label)
+  },
+  { immediate: true }
+)
+
 async function retry() {
   mapError.value = ''
   mapReady.value = false
@@ -178,6 +380,8 @@ onBeforeUnmount(() => {
   resizeObserver = null
   if (resizeRaf) cancelAnimationFrame(resizeRaf)
   resizeRaf = 0
+  if (moveAnimRaf) cancelAnimationFrame(moveAnimRaf)
+  moveAnimRaf = 0
   mapInstance = null
 })
 </script>

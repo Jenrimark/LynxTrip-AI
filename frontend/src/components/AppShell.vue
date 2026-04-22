@@ -31,13 +31,14 @@ const isFullBleed = computed(
 )
 const isNoScrollPage = computed(() => active.value === 'ai-qa' || active.value === 'support' || active.value === 'my-map')
 const isMulticityOpen = ref(false)
+const multicitySubmitting = ref(false)
 const multicityCityLoading = ref(false)
 const multicityCityOptions = ref([])
 let multicityCitySuggestTimer = null
 const multicityForm = ref({
   title: '',
   description: '',
-  stops: [{ city: '', days: '4' }],
+  stops: [{ city: '', days: '4', lng: null, lat: null }],
   styleMix: {
     red: 34,
     green: 33,
@@ -191,6 +192,8 @@ function toggleSidebar() {
 }
 
 function openMulticityModal() {
+  // 先进入“我的地图”，便于选择地点时实时标点
+  router.push({ name: 'my-map' }).catch(() => {})
   isMulticityOpen.value = true
 }
 
@@ -199,6 +202,7 @@ function closeMulticityModal() {
 }
 
 function submitMulticity() {
+  if (multicitySubmitting.value) return
   const stops = (multicityForm.value.stops || [])
     .map((s) => ({ city: String(s.city || '').trim(), days: String(s.days || '').trim() }))
     .filter((s) => s.city)
@@ -206,9 +210,11 @@ function submitMulticity() {
     ElMessage.warning('请至少选择一个城市')
     return
   }
+  multicitySubmitting.value = true
   const cities = stops.map((s) => s.city).join('|')
   const days = stops.map((s) => s.days || '1').join('|')
   const plannerText = [multicityForm.value.title, multicityForm.value.description].filter(Boolean).join('；')
+  const tripTitle = String(multicityForm.value.title || '').trim()
   closeMulticityModal()
   router.push({
     name: 'my-itinerary-workspace',
@@ -216,9 +222,12 @@ function submitMulticity() {
       mode: 'multi',
       cities,
       days,
+      tripTitle,
       plannerInput: plannerText,
       autogen: '1',
     },
+  }).finally(() => {
+    multicitySubmitting.value = false
   })
 }
 
@@ -239,10 +248,12 @@ function remoteSearchMulticityCity(queryString) {
       const list = Array.isArray(data?.data) ? data.data : []
       multicityCityOptions.value = list.map((it, idx) => ({
         id: `${it?.name || '地点'}-${it?.lng || ''}-${it?.lat || ''}-${idx}`,
-        value: it?.value || it?.name || '',
+        value: it?.name || it?.value || '',
         name: it?.name || '',
         address: it?.address || '',
         district: it?.district || '',
+        lng: it?.lng,
+        lat: it?.lat,
       }))
     } catch {
       multicityCityOptions.value = []
@@ -255,11 +266,51 @@ function remoteSearchMulticityCity(queryString) {
 function handleMulticityCityChange(value, index) {
   const stops = multicityForm.value.stops || []
   if (!stops[index]) return
-  stops[index].city = String(value || '')
+  const chosenValue = String(value || '')
+  stops[index].city = chosenValue
+
+  // 同步到“我的地图”以便实时标点
+  const hit = (multicityCityOptions.value || []).find((it) => String(it?.value || '') === chosenValue)
+  const lng = hit?.lng != null ? Number(hit.lng) : Number.NaN
+  const lat = hit?.lat != null ? Number(hit.lat) : Number.NaN
+  stops[index].lng = Number.isFinite(lng) ? lng : null
+  stops[index].lat = Number.isFinite(lat) ? lat : null
+  const focusPath = JSON.stringify(
+    (stops || [])
+      .filter((s) => s?.city && Number.isFinite(Number(s?.lng)) && Number.isFinite(Number(s?.lat)))
+      .map((s) => ({
+        name: String(s.city || ''),
+        lng: Number(s.lng),
+        lat: Number(s.lat),
+      }))
+  )
+  if (Number.isFinite(lng) && Number.isFinite(lat)) {
+    router.replace({
+      name: 'my-map',
+      query: {
+        ...route.query,
+        focusLabel: hit?.name || chosenValue,
+        focusLng: String(lng),
+        focusLat: String(lat),
+        focusPath,
+      },
+    }).catch(() => {})
+  } else if (chosenValue) {
+    router.replace({
+      name: 'my-map',
+      query: {
+        ...route.query,
+        focusLabel: chosenValue,
+        focusLng: undefined,
+        focusLat: undefined,
+        focusPath,
+      },
+    }).catch(() => {})
+  }
 
   const isLast = index === stops.length - 1
   if (isLast && stops[index].city.trim()) {
-    stops.push({ city: '', days: '4' })
+    stops.push({ city: '', days: '4', lng: null, lat: null })
   }
 }
 
@@ -267,6 +318,22 @@ function removeMulticityStop(index) {
   const stops = multicityForm.value.stops || []
   if (stops.length <= 1) return
   stops.splice(index, 1)
+  const focusPath = JSON.stringify(
+    (stops || [])
+      .filter((s) => s?.city && Number.isFinite(Number(s?.lng)) && Number.isFinite(Number(s?.lat)))
+      .map((s) => ({
+        name: String(s.city || ''),
+        lng: Number(s.lng),
+        lat: Number(s.lat),
+      }))
+  )
+  router.replace({
+    name: 'my-map',
+    query: {
+      ...route.query,
+      focusPath,
+    },
+  }).catch(() => {})
 }
 
 function normalizeDays(raw) {
@@ -354,17 +421,6 @@ onBeforeUnmount(() => {
           <div class="uipro-group">
             <div class="uipro-group__label">旅行内容</div>
             <nav class="uipro-nav" aria-label="旅行内容">
-              <button class="uipro-item" :class="{ 'is-active': active === 'my-itinerary' }" :title="sidebarCollapsed ? '我的旅行' : undefined" @click="go('my-itinerary')">
-                <span class="uipro-item__icon" aria-hidden="true">
-                  <svg class="uipro-ico" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M12 2a1 1 0 0 1 1 1v1.06A7 7 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A7 7 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A7 7 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A7 7 0 0 1 11 4.06V3a1 1 0 0 1 1-1Zm0 4a5 5 0 1 0 0 10a5 5 0 0 0 0-10Zm0 2a1 1 0 0 1 1 1v2h2a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
-                    />
-                  </svg>
-                </span>
-                <span class="uipro-item__label">我的旅行</span>
-              </button>
               <button class="uipro-item" :class="{ 'is-active': active === 'my-map' }" :title="sidebarCollapsed ? '我的地图' : undefined" @click="go('my-map')">
                 <span class="uipro-item__icon" aria-hidden="true">
                   <svg class="uipro-ico" viewBox="0 0 24 24">
@@ -579,7 +635,7 @@ onBeforeUnmount(() => {
                   popper-class="home-city-popper"
                   @change="(value) => handleMulticityCityChange(value, idx)"
                 >
-                  <el-option v-for="item in multicityCityOptions" :key="item.id" :label="item.value" :value="item.value">
+                  <el-option v-for="item in multicityCityOptions" :key="item.id" :label="item.name || item.value" :value="item.value">
                     <div class="cityOption">
                       <div class="cityOption__name">{{ item.name || item.value }}</div>
                       <div class="cityOption__meta">{{ item.address || item.district || '暂无详细地址' }}</div>
@@ -653,7 +709,10 @@ onBeforeUnmount(() => {
             </section>
 
             <div class="multicity-actions">
-              <button type="submit" class="create-button">创建多城市行程</button>
+              <button type="submit" class="create-button" :disabled="multicitySubmitting">
+                <span v-if="!multicitySubmitting">创建多城市行程</span>
+                <span v-else class="create-button__spin" aria-hidden="true" />
+              </button>
             </div>
           </form>
         </div>
@@ -1350,6 +1409,23 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   appearance: none;
   box-shadow: 0 10px 24px color-mix(in srgb, var(--mc-accent) 28%, transparent);
+}
+.create-button:disabled {
+  opacity: 0.85;
+  cursor: default;
+  transform: none;
+}
+.create-button__spin {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  animation: mcspin 0.9s linear infinite;
+}
+@keyframes mcspin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .create-button:hover {

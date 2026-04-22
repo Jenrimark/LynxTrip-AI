@@ -122,12 +122,12 @@ public class AiChatController {
     }
 
     private String formatRoute(Map<String, Object> r) {
-        String name = String.valueOf(r.getOrDefault("xianlumingcheng", "Unknown"));
-        String category = String.valueOf(r.getOrDefault("xianlufenlei", ""));
+        String name = String.valueOf(r.getOrDefault("name", r.getOrDefault("xianlumingcheng", "Unknown")));
+        String category = String.valueOf(r.getOrDefault("category", r.getOrDefault("xianlufenlei", "")));
         String price = String.valueOf(r.getOrDefault("price", "N/A"));
-        String from = String.valueOf(r.getOrDefault("chufadi", ""));
-        String to = String.valueOf(r.getOrDefault("mudedi", ""));
-        String transport = String.valueOf(r.getOrDefault("jiaotongfangshi", ""));
+        String from = String.valueOf(r.getOrDefault("departure", r.getOrDefault("chufadi", "")));
+        String to = String.valueOf(r.getOrDefault("destination", r.getOrDefault("mudedi", "")));
+        String transport = String.valueOf(r.getOrDefault("transport", r.getOrDefault("jiaotongfangshi", "")));
 
         return String.format("%s [%s] ¥%s - %s -> %s (%s)",
                 name, category, price, from, to, transport);

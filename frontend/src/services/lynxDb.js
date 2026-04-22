@@ -29,6 +29,61 @@ async function del(url, params) {
   return data
 }
 
+function normalizeCategory(item) {
+  return {
+    ...item,
+    name: item?.name ?? item?.xianlufenlei ?? '',
+    xianlufenlei: item?.xianlufenlei ?? item?.name ?? '',
+    createdAt: item?.createdAt ?? item?.created_at ?? item?.addtime ?? '',
+    addtime: item?.addtime ?? item?.created_at ?? item?.createdAt ?? '',
+  }
+}
+
+function normalizeRoute(item) {
+  return {
+    ...item,
+    name: item?.name ?? item?.xianlumingcheng ?? '',
+    xianlumingcheng: item?.xianlumingcheng ?? item?.name ?? '',
+    category: item?.category ?? item?.xianlufenlei ?? '',
+    xianlufenlei: item?.xianlufenlei ?? item?.category ?? '',
+    coverUrl: item?.coverUrl ?? item?.cover_url ?? item?.fengmiantu ?? '',
+    fengmiantu: item?.fengmiantu ?? item?.cover_url ?? item?.coverUrl ?? '',
+    attractionName: item?.attractionName ?? item?.attraction_name ?? item?.jingdianmingcheng ?? '',
+    jingdianmingcheng: item?.jingdianmingcheng ?? item?.attraction_name ?? item?.attractionName ?? '',
+    departure: item?.departure ?? item?.chufadi ?? '',
+    chufadi: item?.chufadi ?? item?.departure ?? '',
+    destination: item?.destination ?? item?.mudedi ?? '',
+    mudedi: item?.mudedi ?? item?.destination ?? '',
+    transport: item?.transport ?? item?.jiaotongfangshi ?? '',
+    jiaotongfangshi: item?.jiaotongfangshi ?? item?.transport ?? '',
+    clickCount: item?.clickCount ?? item?.click_count ?? item?.clicknum ?? 0,
+    clicknum: item?.clicknum ?? item?.click_count ?? item?.clickCount ?? 0,
+  }
+}
+
+function normalizeRecord(item) {
+  return {
+    ...item,
+    tablename: item?.tablename ?? item?.table_name ?? item?.tableName ?? '',
+    tableName: item?.tableName ?? item?.table_name ?? item?.tablename ?? '',
+    refid: item?.refid ?? item?.ref_id ?? item?.refId ?? null,
+    refId: item?.refId ?? item?.ref_id ?? item?.refid ?? null,
+    goodid: item?.goodid ?? item?.product_id ?? item?.productId ?? null,
+    productId: item?.productId ?? item?.product_id ?? item?.goodid ?? null,
+    goodname: item?.goodname ?? item?.product_name ?? item?.productName ?? '',
+    productName: item?.productName ?? item?.product_name ?? item?.goodname ?? '',
+    buynumber: item?.buynumber ?? item?.buy_number ?? item?.buyNumber ?? 0,
+    buyNumber: item?.buyNumber ?? item?.buy_number ?? item?.buynumber ?? 0,
+    discountprice: item?.discountprice ?? item?.discount_price ?? item?.discountPrice ?? 0,
+    discounttotal: item?.discounttotal ?? item?.discount_total ?? item?.discountTotal ?? 0,
+    isdefault: item?.isdefault ?? item?.is_default ?? item?.isDefault ?? '否',
+    isDefault: item?.isDefault ?? item?.is_default ?? item?.isdefault ?? '否',
+    photoUrl: item?.photoUrl ?? item?.photo_url ?? '',
+    takenAt: item?.takenAt ?? item?.taken_at ?? '',
+    addtime: item?.addtime ?? item?.created_at ?? item?.createdAt ?? '',
+  }
+}
+
 export function getCurrentUserId() {
   return Number(getCachedMe()?.id ?? SESSION_LOGGED_OUT)
 }
@@ -70,11 +125,13 @@ export function formatUserIdDisplay(id) {
 }
 
 export async function listCategories() {
-  return await get('/api/data/categories')
+  const rows = await get('/api/data/categories')
+  return (Array.isArray(rows) ? rows : []).map(normalizeCategory)
 }
 
 export async function listRoutes(kind = 'lvyouxianlu') {
-  return await get('/api/data/routes', { kind })
+  const rows = await get('/api/data/routes', { kind })
+  return (Array.isArray(rows) ? rows : []).map(normalizeRoute)
 }
 
 export async function bumpRouteClick(kind, id) {
@@ -87,15 +144,16 @@ export async function listNews() {
 
 export async function listCart() {
   await fetchMe()
-  return await get('/api/data/cart')
+  const rows = await get('/api/data/cart')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function upsertCartItem({ tablename, good }) {
   await fetchMe()
   return await post('/api/data/cart', {
-    tablename,
-    goodid: Number(good.id),
-    goodname: good.xianlumingcheng || good.goodname || '',
+    tableName: tablename,
+    productId: Number(good.id),
+    productName: good.name || good.xianlumingcheng || good.goodname || '',
     picture: good.fengmiantu || good.picture || '',
     price: Number(good.price || 0),
   })
@@ -103,7 +161,7 @@ export async function upsertCartItem({ tablename, good }) {
 
 export async function updateCartQuantity(cartId, buynumber) {
   await fetchMe()
-  return await patch('/api/data/cart/quantity', { id: cartId, buynumber })
+  return await patch('/api/data/cart/quantity', { id: cartId, buyNumber: buynumber })
 }
 
 export async function removeCartItem(cartId) {
@@ -113,7 +171,8 @@ export async function removeCartItem(cartId) {
 
 export async function listAddresses() {
   await fetchMe()
-  return await get('/api/data/addresses')
+  const rows = await get('/api/data/addresses')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function setDefaultAddress(addressId) {
@@ -123,12 +182,13 @@ export async function setDefaultAddress(addressId) {
 
 export async function addAddress({ address, name, phone, isdefault = '否' }) {
   await fetchMe()
-  return await post('/api/data/addresses', { address, name, phone, isdefault })
+  return await post('/api/data/addresses', { address, name, phone, isDefault: isdefault })
 }
 
 export async function listOrders() {
   await fetchMe()
-  return await get('/api/data/orders')
+  const rows = await get('/api/data/orders')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function updateOrderStatus(orderId, status) {
@@ -148,17 +208,19 @@ export async function checkout({ addressText }) {
 
 export async function listStoreup() {
   await fetchMe()
-  return await get('/api/data/storeups')
+  const rows = await get('/api/data/storeups')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function toggleStoreup({ tablename, refid, name, picture }) {
   await fetchMe()
-  return await post('/api/data/storeups/toggle', { tablename, refid, name, picture })
+  return await post('/api/data/storeups/toggle', { tableName: tablename, refId: refid, name, picture })
 }
 
 export async function listGallery() {
   await fetchMe()
-  return await get('/api/data/gallery')
+  const rows = await get('/api/data/gallery')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function addGalleryItem({ title, photoUrl, note, takenAt, location }) {
@@ -168,7 +230,8 @@ export async function addGalleryItem({ title, photoUrl, note, takenAt, location 
 
 export async function listChat() {
   await fetchMe()
-  return await get('/api/data/chat')
+  const rows = await get('/api/data/chat')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function sendChat({ ask }) {
@@ -178,10 +241,21 @@ export async function sendChat({ ask }) {
 
 export async function listTrips() {
   await fetchMe()
-  return await get('/api/data/trips')
+  const rows = await get('/api/data/trips')
+  return (Array.isArray(rows) ? rows : []).map(normalizeRecord)
 }
 
 export async function saveTrip({ title, payload }) {
   await fetchMe()
   return await post('/api/data/trips', { title, payload: payload || {} })
+}
+
+export async function deleteTrips(ids) {
+  await fetchMe()
+  const list = Array.isArray(ids) ? ids : [ids]
+  const cleaned = list
+    .map((x) => Number(x))
+    .filter((x) => Number.isFinite(x) && x > 0)
+  if (!cleaned.length) return { ok: true }
+  return await del('/api/data/trips', { ids: cleaned.join(',') })
 }

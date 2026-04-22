@@ -227,7 +227,7 @@ async function handleOrderAction(order, action) {
 
         <div class="panel lynx-card lynx-card--glass">
           <div class="panel__hd">
-            <div class="panel__title">待结算清单</div>
+            <div class="panel__title">购物车</div>
             <div>{{ cart.length }} 件</div>
           </div>
 
@@ -297,7 +297,6 @@ async function handleOrderAction(order, action) {
               <span class="pay__value pay__addr">{{ selectedAddressText || '未选择' }}</span>
             </div>
             <el-button class="pay__btn" type="primary" size="large" :disabled="!cart.length" @click="doCheckout">去结算</el-button>
-            <div class="pay__tip">结算后会写入 `orders` 表结构，并清空当前用户的 `cart`。</div>
           </div>
         </div>
       </aside>

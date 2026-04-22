@@ -41,7 +41,7 @@ public class AuthController {
     @PostMapping("/register")
     public ApiResult register(@Valid @RequestBody RegisterRequest req, HttpServletResponse response) {
         try {
-            AuthUser user = authService.register(req.account(), req.mima(), req.xingming(), req.xingbie());
+            AuthUser user = authService.register(req.account(), req.password(), req.displayName(), req.gender());
             setSessionCookie(response, user.id());
             return new ApiResult(true, "注册成功", user);
         } catch (IllegalStateException e) {
@@ -54,7 +54,7 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResult login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
         try {
-            AuthUser user = authService.login(req.account(), req.mima());
+            AuthUser user = authService.login(req.account(), req.password());
             setSessionCookie(response, user.id());
             return new ApiResult(true, "登录成功", user);
         } catch (IllegalArgumentException e) {
@@ -75,7 +75,7 @@ public class AuthController {
     @PatchMapping("/password")
     public ApiResult updatePassword(@Valid @RequestBody UpdatePasswordRequest req, HttpServletRequest request) {
         Long userId = mustReadUserId(request);
-        boolean ok = authService.updatePassword(userId, req.oldMima(), req.newMima());
+        boolean ok = authService.updatePassword(userId, req.oldPassword(), req.newPassword());
         if (!ok) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "原密码错误或新密码无效");
         }
@@ -86,7 +86,7 @@ public class AuthController {
     @PatchMapping("/profile")
     public ApiResult updateProfile(@Valid @RequestBody UpdateProfileRequest req, HttpServletRequest request) {
         Long userId = mustReadUserId(request);
-        AuthUser user = authService.updateProfile(userId, req.xingming(), req.xingbie(), req.lianxidianhua(), req.touxiang());
+        AuthUser user = authService.updateProfile(userId, req.displayName(), req.gender(), req.phone(), req.avatarUrl());
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录态失效");
         }

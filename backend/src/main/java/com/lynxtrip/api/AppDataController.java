@@ -58,7 +58,7 @@ public class AppDataController {
     @PatchMapping("/cart/quantity")
     public Map<String, Object> updateCartQuantity(@RequestBody Map<String, Object> body, HttpServletRequest request) {
         appDataService.updateCartQuantity(appDataService.requireUserId(request), reqLong(body, "id"),
-                Integer.parseInt(reqString(body, "buynumber")));
+                Integer.parseInt(reqString(body, "buyNumber")));
         return Map.of("ok", true);
     }
 
@@ -149,6 +149,12 @@ public class AppDataController {
     @PostMapping("/trips")
     public Map<String, Object> saveTrip(@RequestBody Map<String, Object> body, HttpServletRequest request) {
         appDataService.saveTrip(appDataService.requireUserId(request), body);
+        return Map.of("ok", true);
+    }
+
+    @DeleteMapping("/trips")
+    public Map<String, Object> deleteTrips(@RequestParam String ids, HttpServletRequest request) {
+        appDataService.deleteTrips(appDataService.requireUserId(request), ids);
         return Map.of("ok", true);
     }
 

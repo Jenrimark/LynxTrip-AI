@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -10,7 +10,7 @@ import {
   updatePassword as updatePasswordRemote,
   updateProfile as updateProfileRemote,
 } from '../services/auth'
-import { formatUserIdDisplay, deleteUserAccount, listTrips, listStoreup, listRoutes, saveTrip, toggleStoreup } from '../services/lynxDb'
+import { formatUserIdDisplay, deleteTrips, deleteUserAccount, listTrips, listStoreup } from '../services/lynxDb'
 
 const router = useRouter()
 const user = ref(null)
@@ -18,27 +18,14 @@ const userIdDisplay = computed(() => formatUserIdDisplay(user.value?.id))
 const tripItems = ref([])
 const storeupItems = ref([])
 const travelTab = ref('trip')
-const seeding = ref(false)
+const avatarFileInput = ref(null)
+const profileEditing = ref(false)
+const introDraft = ref('')
+const introStorageKey = computed(() => `lynxtrip.me.intro.${user.value?.id || 'guest'}`)
+const profileForm = ref({ xingming: '', xingbie: '', lianxidianhua: '', touxiang: '' })
 
-function normalizeRoute(routeItem) {
-  if (!routeItem) return null
-  return {
-    tablename: routeItem.__table || 'lvyouxianlu',
-    id: routeItem.id,
-    name: routeItem.xianlumingcheng || '未命名路线',
-    cover: routeItem.fengmiantu || '',
-    price: Number(routeItem.price || 0),
-    from: routeItem.chufadi || '',
-    to: routeItem.mudedi || '',
-    traffic: routeItem.jiaotongfangshi || '',
-    category: routeItem.xianlufenlei || '',
-  }
-}
-
-async function refreshTravel() {
-  const [trips, storeups] = await Promise.all([listTrips(), listStoreup()])
-  tripItems.value = Array.isArray(trips) ? trips : []
-  storeupItems.value = Array.isArray(storeups) ? storeups : []
+function defaultIntro(nextUser) {
+  return `你好，我是${nextUser?.xingming || nextUser?.yonghuming || '旅行者'}，热爱探索每一段旅程。`
 }
 
 onMounted(async () => {
@@ -48,6 +35,18 @@ onMounted(async () => {
   }
   const [nextUser, trips, storeups] = await Promise.all([fetchMe(true), listTrips(), listStoreup()])
   user.value = nextUser
+  profileForm.value = {
+    xingming: String(nextUser?.xingming || nextUser?.displayName || ''),
+    xingbie: String(nextUser?.xingbie || nextUser?.gender || ''),
+    lianxidianhua: String(nextUser?.lianxidianhua || nextUser?.phone || ''),
+    touxiang: String(nextUser?.touxiang || nextUser?.avatarUrl || ''),
+  }
+  try {
+    const savedIntro = localStorage.getItem(introStorageKey.value)
+    introDraft.value = savedIntro || defaultIntro(nextUser)
+  } catch {
+    introDraft.value = defaultIntro(nextUser)
+  }
   tripItems.value = Array.isArray(trips) ? trips : []
   storeupItems.value = Array.isArray(storeups) ? storeups : []
 })
@@ -69,6 +68,92 @@ const emailStatusText = computed(() => (userEmailText.value === '未绑定' ? '�
 const orderedTrips = computed(() => [...tripItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
 const orderedStoreups = computed(() => [...storeupItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
 const travelCards = computed(() => (travelTab.value === 'trip' ? orderedTrips.value : orderedStoreups.value))
+
+const selectionMode = ref(false)
+const selectedTripIds = ref(new Set())
+const ctxMenu = ref({ open: false, x: 0, y: 0, tripId: null })
+
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  selectedTripIds.value = new Set()
+  ctxMenu.value = { open: false, x: 0, y: 0, tripId: null }
+}
+
+function isTripSelected(id) {
+  return selectedTripIds.value.has(Number(id))
+}
+
+function toggleTripSelected(id) {
+  const key = Number(id)
+  const next = new Set(selectedTripIds.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selectedTripIds.value = next
+}
+
+async function refreshTripsAndStoreups() {
+  const [trips, storeups] = await Promise.all([listTrips(), listStoreup()])
+  tripItems.value = Array.isArray(trips) ? trips : []
+  storeupItems.value = Array.isArray(storeups) ? storeups : []
+}
+
+async function doDeleteTrips(ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+  if (!list.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${list.length} 条行程吗？删除后不可恢复。`, '删除行程', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  await deleteTrips(list)
+  ElMessage.success('已删除')
+  await refreshTripsAndStoreups()
+  selectedTripIds.value = new Set()
+  selectionMode.value = false
+  ctxMenu.value = { open: false, x: 0, y: 0, tripId: null }
+}
+
+function openTripContextMenu(e, tripId) {
+  if (travelTab.value !== 'trip') return
+  e.preventDefault()
+  if (selectionMode.value) return
+  ctxMenu.value = { open: true, x: e.clientX, y: e.clientY, tripId: Number(tripId) }
+}
+
+function closeTripContextMenu() {
+  ctxMenu.value = { open: false, x: 0, y: 0, tripId: null }
+}
+
+function handleGlobalPointerDown(ev) {
+  if (!ctxMenu.value.open) return
+  const target = ev?.target
+  if (target && typeof target.closest === 'function' && target.closest('.ctxMenu')) {
+    return
+  }
+  closeTripContextMenu()
+}
+
+function handleGlobalKeydown(ev) {
+  if (ev.key === 'Escape') {
+    closeTripContextMenu()
+    selectionMode.value = false
+    selectedTripIds.value = new Set()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', handleGlobalPointerDown, { capture: true })
+  window.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', handleGlobalPointerDown, { capture: true })
+  window.removeEventListener('keydown', handleGlobalKeydown)
+})
 
 function travelCardTitle(item) {
   return String(item?.title || item?.name || item?.goodname || '未命名记录')
@@ -102,8 +187,9 @@ function placeLine(item) {
   if (to && to !== from) places.push(to)
   if (!places.length) places.push(...parsePlacesFromTitle(item?.title || item?.name || ''))
   const unique = [...new Set(places)].slice(0, 3)
-  if (!unique.length) return '中国 🇨🇳'
-  return unique.map((x) => `${x} 🇨🇳`).join(' · ')
+  if (!unique.length) return travelCardTitle(item)
+  if (unique.length === 1) return `${unique[0]} 🇨🇳`
+  return travelCardTitle(item)
 }
 
 function preferenceTags(item) {
@@ -156,116 +242,31 @@ function coverOf(item) {
   return first?.cover || ''
 }
 
-async function createDemoData() {
-  if (seeding.value) return
-  seeding.value = true
-  try {
-    const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
-    const all = [...(a || []), ...(b || [])].filter(Boolean)
-    if (!all.length) {
-      ElMessage.warning('暂无可用路线数据，无法生成测试行程')
-      return
-    }
-
-    const pick = (i) => all[i % all.length]
-    const demos = [
-      {
-        title: '北京 → 西安文化漫游',
-        departure: '北京',
-        destination: '西安',
-        days: 3,
-        preference: '博物馆 历史街区 美食',
-        travelType: '文化深度游',
-      },
-      {
-        title: '上海 → 杭州周末轻旅',
-        departure: '上海',
-        destination: '杭州',
-        days: 2,
-        preference: '轻松 亲子 湖景',
-        travelType: '周末短途',
-      },
-      {
-        title: '广州 → 桂林山水线',
-        departure: '广州',
-        destination: '桂林',
-        days: 4,
-        preference: '自然风光 摄影 徒步',
-        travelType: '自然探索',
-      },
-    ]
-
-    for (let i = 0; i < demos.length; i += 1) {
-      const chosen = [pick(i * 2), pick(i * 2 + 1), pick(i * 2 + 2)].map(normalizeRoute).filter(Boolean)
-      // eslint-disable-next-line no-await-in-loop
-      await saveTrip({
-        title: `${demos[i].title} · ${demos[i].days}天`,
-        payload: {
-          ...demos[i],
-          people: 2,
-          budget: 4500 + i * 1200,
-          recommended: chosen,
-        },
-      })
-    }
-
-    const first = normalizeRoute(pick(0))
-    if (first) {
-      await toggleStoreup({
-        tablename: first.tablename,
-        refid: Number(first.id),
-        name: first.name,
-        picture: first.cover,
-      })
-    }
-
-    await refreshTravel()
-    ElMessage.success('已生成 3 条测试行程与 1 条收藏')
-  } catch {
-    ElMessage.error('测试数据生成失败，请稍后重试')
-  } finally {
-    seeding.value = false
-  }
-}
-
-async function handleCopyId() {
-  if (!userIdDisplay.value || userIdDisplay.value === '000000') {
-    ElMessage.warning('暂无可复制的用户ID')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(userIdDisplay.value)
-    ElMessage.success('用户ID已复制')
-  } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-function handleGoRegister() {
-  logout().finally(() => {
-    router.replace({ name: 'login', query: { redirect: '/me' } })
-  })
-}
-
-
 const isPwdOpen = ref(false)
 const pwdForm = ref({ oldMima: '', newMima: '', newMima2: '' })
-const isProfileOpen = ref(false)
-const profileForm = ref({ xingming: '', xingbie: '', lianxidianhua: '', touxiang: '' })
 
 function openPwd() {
   pwdForm.value = { oldMima: '', newMima: '', newMima2: '' }
   isPwdOpen.value = true
 }
 
-function openProfile() {
+function startProfileEdit() {
   profileForm.value = {
-    xingming: String(user.value?.xingming || ''),
-    xingbie: String(user.value?.xingbie || ''),
-    lianxidianhua: String(user.value?.lianxidianhua || ''),
-    touxiang: String(user.value?.touxiang || ''),
+    xingming: String(user.value?.xingming || user.value?.displayName || ''),
+    xingbie: String(user.value?.xingbie || user.value?.gender || ''),
+    lianxidianhua: String(user.value?.lianxidianhua || user.value?.phone || ''),
+    touxiang: String(user.value?.touxiang || user.value?.avatarUrl || ''),
   }
-  isProfileOpen.value = true
+  profileEditing.value = true
+}
+
+function cancelProfileEdit() {
+  profileEditing.value = false
+  try {
+    introDraft.value = localStorage.getItem(introStorageKey.value) || defaultIntro(user.value)
+  } catch {
+    introDraft.value = defaultIntro(user.value)
+  }
 }
 
 async function savePwd() {
@@ -289,17 +290,66 @@ function resetPwdForm() {
 
 async function saveProfile() {
   try {
+    const keepGender = String(user.value?.xingbie || user.value?.gender || '').trim()
+    const keepPhone = String(user.value?.lianxidianhua || user.value?.phone || '').trim()
+    const nextGender = String(profileForm.value.xingbie || '').trim() || keepGender
+    const nextPhone = String(profileForm.value.lianxidianhua || '').trim() || keepPhone
     const { user: nextUser } = await updateProfileRemote({
       xingming: profileForm.value.xingming,
-      xingbie: profileForm.value.xingbie,
-      lianxidianhua: profileForm.value.lianxidianhua,
+      xingbie: nextGender,
+      lianxidianhua: nextPhone,
       touxiang: profileForm.value.touxiang,
     })
     user.value = nextUser || user.value
-    isProfileOpen.value = false
+    try {
+      localStorage.setItem(introStorageKey.value, String(introDraft.value || '').trim())
+    } catch {
+      // ignore storage error and still treat as saved profile
+    }
+    profileEditing.value = false
     ElMessage.success('资料已保存')
   } catch (err) {
     ElMessage.error(getErrorMessage(err, '资料保存失败'))
+  }
+}
+
+async function quickChangeAvatar() {
+  const el = avatarFileInput.value
+  if (!el) return
+  el.click()
+}
+
+async function handleAvatarFileChange(e) {
+  const file = e?.target?.files?.[0]
+  if (!file) return
+  if (!String(file.type || '').startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    e.target.value = ''
+    return
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    ElMessage.warning('图片过大（建议小于 3MB）')
+    e.target.value = ''
+    return
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('read_failed'))
+    reader.readAsDataURL(file)
+  }).catch(() => '')
+
+  e.target.value = ''
+  if (!dataUrl) {
+    ElMessage.error('读取图片失败，请重试')
+    return
+  }
+  try {
+    const { user: nextUser } = await updateProfileRemote({ touxiang: dataUrl })
+    user.value = nextUser || { ...(user.value || {}), touxiang: dataUrl }
+    ElMessage.success('头像已更新')
+  } catch (err) {
+    ElMessage.error(getErrorMessage(err, '头像更新失败'))
   }
 }
 
@@ -337,18 +387,34 @@ async function handleLogoutAccount() {
       <div class="identityCard">
     <div class="profileInfo">
       <div class="profileInfo__main">
-        <el-avatar class="el-avatar--circle avatar avatar--inline" :size="234" :src="user?.touxiang" />
-        <h2 class="name">{{ user?.xingming || '未命名用户' }}</h2>
-        <p class="line">性别 {{ user?.xingbie || '—' }} ｜ 用户ID {{ userIdDisplay }}</p>
-        <p class="line">电话 {{ user?.lianxidianhua || '—' }} ｜ 用户名 {{ user?.yonghuming || '—' }}</p>
-        <p class="desc">欢迎回来，{{ user?.yonghuming || '用户' }}。在这里可以统一管理账号信息、密码与安全操作。</p>
-        <div class="actionRow">
-          <button class="pill pill--primary" type="button" @click="openProfile">编辑资料</button>
-          <button class="pill" type="button" @click="openPwd">修改密码</button>
-          <button class="pill" type="button" @click="handleCopyId">复制ID</button>
-          <button class="pill pill--soft" type="button" @click="handleGoRegister">注册账号</button>
-          <button class="pill pill--soft" type="button" @click="handleLogoutSession">退出登录</button>
-          <button class="pill pill--danger" type="button" @click="handleLogoutAccount">注销账号</button>
+        <button class="avatarBtn avatar--inline" type="button" @click="quickChangeAvatar" aria-label="更换头像">
+          <el-avatar class="el-avatar--circle avatar" :size="234" :src="user?.touxiang" />
+          <span class="avatarOverlay" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="avatarCam" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M9.5 4.5h5l1.5 2H19a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3h3L9.5 4.5Zm2.5 13a4 4 0 1 0 0-8a4 4 0 0 0 0 8Zm0-2a2 2 0 1 1 0-4a2 2 0 0 1 0 4Z"
+              />
+            </svg>
+          </span>
+        </button>
+        <input ref="avatarFileInput" class="avatarFile" type="file" accept="image/*" @change="handleAvatarFileChange" />
+        <h2 v-if="!profileEditing" class="name">{{ user?.xingming || user?.yonghuming || '未命名用户' }}</h2>
+        <el-input
+          v-else
+          v-model="profileForm.xingming"
+          class="nameInput"
+          maxlength="64"
+          placeholder="请输入姓名"
+        />
+        <div class="introBox">
+          <textarea
+            v-model="introDraft"
+            class="introBox__textarea"
+            :readonly="!profileEditing"
+            maxlength="140"
+            placeholder="介绍一下你自己和旅行偏好..."
+          />
         </div>
       </div>
     </div>
@@ -370,14 +436,42 @@ async function handleLogoutAccount() {
             >
               我的收藏
             </button>
-            <button type="button" class="travelPane__seed" :disabled="seeding" @click="createDemoData">
-              {{ seeding ? '生成中…' : '创建测试数据' }}
+            <button
+              v-if="travelTab === 'trip' && travelCards.length"
+              type="button"
+              class="travelPane__tab travelPane__tab--ghost"
+              @click="toggleSelectionMode"
+            >
+              {{ selectionMode ? `取消管理（已选 ${selectedTripIds.size}）` : '批量管理' }}
+            </button>
+            <button
+              v-if="selectionMode && selectedTripIds.size"
+              type="button"
+              class="travelPane__tab travelPane__tab--danger"
+              @click="doDeleteTrips(Array.from(selectedTripIds))"
+            >
+              删除选中（{{ selectedTripIds.size }}）
             </button>
           </div>
         </div>
         <div v-if="!travelCards.length" class="travelPane__empty">暂无内容</div>
         <div v-else class="travelPane__grid">
-          <article v-for="item in travelCards" :key="`${travelTab}-${item.id}`" class="card lynx-card lynx-card--glass">
+          <article
+            v-for="item in travelCards"
+            :key="`${travelTab}-${item.id}`"
+            class="card lynx-card lynx-card--glass"
+            :class="{ 'is-selectable': selectionMode && travelTab === 'trip', 'is-selected': selectionMode && travelTab === 'trip' && isTripSelected(item.id) }"
+            @contextmenu="(e) => openTripContextMenu(e, item.id)"
+            @click="selectionMode && travelTab === 'trip' ? toggleTripSelected(item.id) : null"
+          >
+            <button
+              v-if="selectionMode && travelTab === 'trip'"
+              type="button"
+              class="card__check"
+              :class="{ 'is-on': isTripSelected(item.id) }"
+              @click.stop="toggleTripSelected(item.id)"
+              aria-label="选择该行程"
+            />
             <div v-if="travelTab === 'trip'" class="card__media" :class="{ 'has-img': !!coverOf(item) }">
               <el-image v-if="coverOf(item)" class="card__img" :src="coverOf(item)" fit="cover" :alt="travelCardTitle(item)">
                 <template #error>
@@ -417,14 +511,69 @@ async function handleLogoutAccount() {
           <span class="label">余额</span>
           <strong class="money">¥ {{ moneyText }}</strong>
         </article>
-        <article class="railCard">
-          <span class="label">账户信息</span>
-          <div class="fact"><span>用户ID</span><strong>{{ userIdDisplay }}</strong></div>
-          <div class="fact"><span>实名认证</span><strong>{{ realNameText }}</strong></div>
-          <div class="fact"><span>邮箱状态</span><strong>{{ emailStatusText }}</strong></div>
+        <article class="railCard railCard--info">
+          <div class="railHead">
+            <span class="label">账户信息</span>
+            <button class="railEditBtn" type="button" @click="profileEditing ? cancelProfileEdit() : startProfileEdit()">
+              {{ profileEditing ? '取消编辑' : '编辑资料' }}
+            </button>
+          </div>
+          <div class="railInfoBlock">
+            <div class="railInfoItem">
+              <span class="railInfoKey">用户名</span>
+              <strong class="railInfoVal">{{ user?.yonghuming || '—' }}</strong>
+            </div>
+            <div class="railInfoItem">
+              <span class="railInfoKey">用户ID</span>
+              <strong class="railInfoVal railMono">{{ userIdDisplay }}</strong>
+            </div>
+            <div class="railInfoItem">
+              <span class="railInfoKey">电话</span>
+              <strong v-if="!profileEditing" class="railInfoVal railMono">{{ user?.lianxidianhua || '—' }}</strong>
+              <el-input
+                v-else
+                v-model="profileForm.lianxidianhua"
+                class="railInput"
+                maxlength="32"
+                placeholder="请输入电话"
+              />
+            </div>
+            <div class="railInfoItem">
+              <span class="railInfoKey">性别</span>
+              <strong v-if="!profileEditing" class="railInfoVal">{{ user?.xingbie || '—' }}</strong>
+              <el-select v-else v-model="profileForm.xingbie" class="railInput" placeholder="请选择" clearable>
+                <el-option label="男" value="男" />
+                <el-option label="女" value="女" />
+                <el-option label="保密" value="保密" />
+              </el-select>
+            </div>
+            <div class="railInfoItem">
+              <span class="railInfoKey">实名认证</span>
+              <strong class="railInfoVal">{{ realNameText }}</strong>
+            </div>
+            <div class="railInfoItem">
+              <span class="railInfoKey">邮箱状态</span>
+              <strong class="railInfoVal">{{ emailStatusText }}</strong>
+            </div>
+          </div>
+          <div class="railActionStrip">
+            <button v-if="profileEditing" class="pill pill--primary railActionBtn" type="button" @click="saveProfile">保存资料</button>
+            <button class="pill railActionBtn" type="button" @click="openPwd">修改密码</button>
+            <button class="pill pill--soft railActionBtn" type="button" @click="handleLogoutSession">退出登录</button>
+            <button class="pill pill--danger railActionBtn" type="button" @click="handleLogoutAccount">注销账号</button>
+          </div>
         </article>
       </aside>
     </div>
+    </div>
+
+    <div
+      v-if="ctxMenu.open"
+      class="ctxMenu"
+      :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
+      role="menu"
+    >
+      <button class="ctxMenu__item ctxMenu__item--danger" type="button" @click="doDeleteTrips([ctxMenu.tripId])">删除行程</button>
     </div>
 
     <el-dialog v-model="isPwdOpen" title="修改密码" width="480px" @closed="resetPwdForm">
@@ -445,34 +594,6 @@ async function handleLogoutAccount() {
     </template>
     </el-dialog>
 
-    <el-dialog v-model="isProfileOpen" title="编辑资料" width="560px">
-    <el-form label-position="top">
-      <div class="dialogRow">
-        <el-form-item label="姓名">
-          <el-input v-model="profileForm.xingming" maxlength="64" />
-        </el-form-item>
-        <el-form-item label="性别">
-          <el-select v-model="profileForm.xingbie" placeholder="请选择" clearable>
-            <el-option label="男" value="男" />
-            <el-option label="女" value="女" />
-            <el-option label="保密" value="保密" />
-          </el-select>
-        </el-form-item>
-      </div>
-      <div class="dialogRow">
-        <el-form-item label="电话">
-          <el-input v-model="profileForm.lianxidianhua" maxlength="32" />
-        </el-form-item>
-        <el-form-item label="头像链接">
-          <el-input v-model="profileForm.touxiang" maxlength="255" placeholder="https://..." />
-        </el-form-item>
-      </div>
-    </el-form>
-    <template #footer>
-      <el-button @click="isProfileOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveProfile">保存修改</el-button>
-    </template>
-    </el-dialog>
   </section>
 </template>
 
@@ -550,10 +671,49 @@ async function handleLogoutAccount() {
 }
 
 .profileInfo__main .avatar--inline {
+  margin-right: 0;
+}
+
+.avatarBtn {
   position: absolute;
   left: -10px;
   top: -115px;
-  margin-right: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.avatarOverlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.5);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.avatarCam {
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.95);
+  filter: drop-shadow(0 10px 18px rgba(2, 6, 23, 0.22));
+}
+.avatarBtn:hover .avatarOverlay,
+.avatarBtn:focus-visible .avatarOverlay {
+  opacity: 1;
+}
+
+.avatarFile {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .name {
@@ -564,26 +724,111 @@ async function handleLogoutAccount() {
   color: #0f172a;
 }
 
-.line {
-  margin: 2px 0;
-  font-size: 14px;
-  color: #475569;
+.nameInput {
+  max-width: 360px;
+  margin-bottom: 6px;
 }
-
-.desc {
-  margin: 6px 0 0 0;
-  font-size: 14px;
-  color: #334155;
+.nameInput :deep(.el-input__wrapper) {
+  border-radius: 12px;
 }
-
-.actionRow {
+.introBox {
   margin-top: 8px;
+}
+.introBox__textarea {
+  width: 90%;
+  max-width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.introBox__textarea[readonly] {
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.railInfoBlock {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.82);
+}
+.railInfoItem {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.railInfoKey {
+  font-size: 14px;
+  font-weight: 800;
+  color: #475569;
+  white-space: nowrap;
+}
+.railInfoVal {
+  font-size: 16px;
+  font-weight: 900;
+  color: #0f172a;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.railMono {
+  font-variant-numeric: tabular-nums;
+}
+
+.railCard--info {
+  padding: 16px;
+}
+.railCard--info .label {
+  color: #0f172a;
+  font-weight: 900;
+  font-size: 16px;
+}
+.railHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
-.actionRow--minor {
-  margin-top: 6px;
+.railEditBtn {
+  border: none;
+  background: transparent;
+  color: #0284c7;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.railInput {
+  width: 150px;
+}
+.railInput :deep(.el-input__wrapper),
+.railInput :deep(.el-select__wrapper) {
+  min-height: 32px;
+  border-radius: 8px;
+}
+.railActionStrip {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+.railActionBtn {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .pill {
@@ -721,6 +966,7 @@ async function handleLogoutAccount() {
   align-items: center;
   gap: 10px;
   z-index: 1;
+  right: 16px;
 }
 .travelPane__tab {
   height: 34px;
@@ -738,21 +984,17 @@ async function handleLogoutAccount() {
   color: #7c2d12;
   background: rgba(249, 115, 22, 0.14);
 }
-.travelPane__seed {
+.travelPane__tab--ghost {
+  min-width: 96px;
   margin-left: auto;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(14, 165, 233, 0.32);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(14, 165, 233, 0.28);
   color: #0369a1;
-  font-size: 12px;
-  font-weight: 900;
-  cursor: pointer;
 }
-.travelPane__seed:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.travelPane__tab--danger {
+  min-width: 124px;
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #991b1b;
+  background: rgba(220, 38, 38, 0.08);
 }
 .travelPane__empty {
   min-height: 170px;
@@ -776,6 +1018,39 @@ async function handleLogoutAccount() {
   background: rgba(255, 255, 255, 0.92);
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
 }
+.card.is-selectable {
+  cursor: pointer;
+}
+.card.is-selected {
+  border-color: rgba(14, 165, 233, 0.5);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14);
+}
+.card__check {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+}
+.card__check.is-on {
+  background: rgba(14, 165, 233, 0.95);
+}
+.card__check.is-on::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 10px;
+  height: 6px;
+  border-left: 3px solid #fff;
+  border-bottom: 3px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
 .card:hover {
   transform: translateY(-3px);
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
@@ -787,6 +1062,36 @@ async function handleLogoutAccount() {
   height: 178px;
   background: #f8fafc;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.ctxMenu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 140px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
+}
+.ctxMenu__item {
+  width: 100%;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ctxMenu__item:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+.ctxMenu__item--danger {
+  color: #991b1b;
 }
 .card__ph {
   width: 100%;
@@ -913,6 +1218,9 @@ async function handleLogoutAccount() {
   }
   .name {
     font-size: 32px;
+  }
+  .introBox__textarea {
+    width: 100%;
   }
 }
 @media (max-width: 520px) {

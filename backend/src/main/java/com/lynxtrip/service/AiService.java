@@ -71,10 +71,24 @@ public class AiService {
      * @return 模型返回的正文；未配置密钥或调用失败时返回 null
      */
     public String chat(String systemPrompt, String userMessage) {
+        return chat(systemPrompt, userMessage, 0.7, 2000);
+    }
+
+    /**
+     * @param systemPrompt 系统提示（含本地上下文）
+     * @param userMessage 用户输入（可为结构化 JSON 字符串）
+     * @param temperature 采样温度（越低越稳定）
+     * @param maxTokens 最大输出 token
+     * @return 模型返回的 message.content；未配置密钥或调用失败时返回 null
+     */
+    public String chat(String systemPrompt, String userMessage, double temperature, int maxTokens) {
         if (!isConfigured()) {
             log.warn("OPENAI_API_KEY is empty");
             return null;
         }
+
+        int safeMaxTokens = Math.max(256, Math.min(8192, maxTokens));
+        double safeTemp = Double.isFinite(temperature) ? Math.max(0.0, Math.min(2.0, temperature)) : 0.7;
 
         try {
             Map<String, Object> requestBody = Map.of(
@@ -83,8 +97,8 @@ public class AiService {
                             Map.of("role", "system", "content", systemPrompt),
                             Map.of("role", "user", "content", userMessage)
                     ),
-                    "temperature", 0.7,
-                    "max_tokens", 2000
+                    "temperature", safeTemp,
+                    "max_tokens", safeMaxTokens
             );
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);

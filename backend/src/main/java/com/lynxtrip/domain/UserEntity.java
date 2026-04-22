@@ -5,15 +5,15 @@ import java.time.LocalDateTime;
 
 public class UserEntity {
     private Long id;
-    private String yonghuming;
-    private String mima;
-    private String xingming;
-    private String touxiang;
-    private String xingbie;
-    private String lianxidianhua;
-    private BigDecimal money;
-    private String shimingrenzheng;
-    private LocalDateTime addtime;
+    private String username;
+    private String password;
+    private String displayName;
+    private String avatarUrl;
+    private String gender;
+    private String phone;
+    private BigDecimal balance;
+    private String identityStatus;
+    private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public Long getId() {
@@ -24,76 +24,76 @@ public class UserEntity {
         this.id = id;
     }
 
-    public String getYonghuming() {
-        return yonghuming;
+    public String getUsername() {
+        return username;
     }
 
-    public void setYonghuming(String yonghuming) {
-        this.yonghuming = yonghuming;
+    public void setUsername(String username) {
+        this.username = username;
     }
 
-    public String getMima() {
-        return mima;
+    public String getPassword() {
+        return password;
     }
 
-    public void setMima(String mima) {
-        this.mima = mima;
+    public void setPassword(String password) {
+        this.password = password;
     }
 
-    public String getXingming() {
-        return xingming;
+    public String getDisplayName() {
+        return displayName;
     }
 
-    public void setXingming(String xingming) {
-        this.xingming = xingming;
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
-    public String getTouxiang() {
-        return touxiang;
+    public String getAvatarUrl() {
+        return avatarUrl;
     }
 
-    public void setTouxiang(String touxiang) {
-        this.touxiang = touxiang;
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
-    public String getXingbie() {
-        return xingbie;
+    public String getGender() {
+        return gender;
     }
 
-    public void setXingbie(String xingbie) {
-        this.xingbie = xingbie;
+    public void setGender(String gender) {
+        this.gender = gender;
     }
 
-    public String getLianxidianhua() {
-        return lianxidianhua;
+    public String getPhone() {
+        return phone;
     }
 
-    public void setLianxidianhua(String lianxidianhua) {
-        this.lianxidianhua = lianxidianhua;
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
-    public BigDecimal getMoney() {
-        return money;
+    public BigDecimal getBalance() {
+        return balance;
     }
 
-    public void setMoney(BigDecimal money) {
-        this.money = money;
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
     }
 
-    public String getShimingrenzheng() {
-        return shimingrenzheng;
+    public String getIdentityStatus() {
+        return identityStatus;
     }
 
-    public void setShimingrenzheng(String shimingrenzheng) {
-        this.shimingrenzheng = shimingrenzheng;
+    public void setIdentityStatus(String identityStatus) {
+        this.identityStatus = identityStatus;
     }
 
-    public LocalDateTime getAddtime() {
-        return addtime;
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
     }
 
-    public void setAddtime(LocalDateTime addtime) {
-        this.addtime = addtime;
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 
     public LocalDateTime getUpdatedAt() {

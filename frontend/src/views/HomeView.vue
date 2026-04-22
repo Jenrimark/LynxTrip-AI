@@ -13,6 +13,7 @@ const cityQuery = ref('')
 const cityOptions = ref([])
 const selectedCity = ref(null)
 const suggestLoading = ref(false)
+const submitting = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 let suggestTimer = null
 const router = useRouter()
@@ -35,7 +36,7 @@ function remoteSearchCities(queryString) {
       const list = Array.isArray(json?.data) ? json.data : []
       cityOptions.value = list.map((it, idx) => ({
         id: `${it?.name || '地点'}-${it?.lng || ''}-${it?.lat || ''}-${idx}`,
-        value: it?.value || it?.name || '',
+        value: it?.name || it?.value || '',
         name: it?.name || '',
         address: it?.address || '',
         district: it?.district || '',
@@ -54,6 +55,7 @@ function onCityChange(value) {
 }
 
 function submitSearch() {
+  if (submitting.value) return
   const text = cityKeyword.value.trim()
   if (!text) {
     ElMessage.warning('请输入城市或地点')
@@ -63,6 +65,7 @@ function submitSearch() {
     ElMessage.warning('请从下拉建议中选择一个地点')
     return
   }
+  submitting.value = true
   router.push({
     name: 'my-itinerary-workspace',
     query: {
@@ -71,6 +74,9 @@ function submitSearch() {
       days: tripDays.value || '1',
       autogen: '1',
     },
+  }).finally(() => {
+    // 路由切走后也会销毁组件，这里只是防止极端情况下重复点击
+    submitting.value = false
   })
 }
 </script>
@@ -100,9 +106,9 @@ function submitSearch() {
                 popper-class="home-city-popper"
                 @change="onCityChange"
               >
-                <el-option v-for="item in cityOptions" :key="item.id" :label="item.value" :value="item.value">
+                <el-option v-for="item in cityOptions" :key="item.id" :label="item.name || item.value" :value="item.value">
                   <div class="cityOption">
-                    <div class="cityOption__name">{{ item.name }}</div>
+                    <div class="cityOption__name">{{ item.name || item.value }}</div>
                     <div class="cityOption__meta">{{ item.address || item.district || '暂无详细地址' }}</div>
                   </div>
                 </el-option>
@@ -110,8 +116,9 @@ function submitSearch() {
               <el-select v-model="tripDays" class="home__days" placeholder="天数" size="large">
                 <el-option v-for="day in dayOptions" :key="day" :label="`${day}天`" :value="day" />
               </el-select>
-              <button class="home__btn" type="button" aria-label="搜索" @click="submitSearch">
-                <img class="home__btnIcon" :src="searchLogoUrl" alt="" aria-hidden="true" />
+              <button class="home__btn" type="button" aria-label="搜索" :disabled="submitting" @click="submitSearch">
+                <img v-if="!submitting" class="home__btnIcon" :src="searchLogoUrl" alt="" aria-hidden="true" />
+                <span v-else class="home__btnSpin" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -223,6 +230,10 @@ function submitSearch() {
   min-height: 40px;
   cursor: pointer;
 }
+.home__btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
 
 .home__btn:focus-visible {
   outline: 2px solid rgba(255, 136, 57, 0.28);
@@ -234,6 +245,18 @@ function submitSearch() {
   height: 28px;
   object-fit: contain;
   display: block;
+}
+.home__btnSpin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid rgba(249, 115, 22, 0.2);
+  border-top-color: rgba(249, 115, 22, 0.95);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 :deep(.cityOption) {

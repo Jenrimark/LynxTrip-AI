@@ -9,12 +9,12 @@ public final class AuthDtos {
 
     public record AuthUser(
             Long id,
-            String yonghuming,
-            String xingming,
-            String xingbie,
-            String lianxidianhua,
-            String shimingrenzheng,
-            String touxiang) {
+            String username,
+            String displayName,
+            String gender,
+            String phone,
+            String identityStatus,
+            String avatarUrl) {
     }
 
     public record ApiResult(
@@ -25,25 +25,25 @@ public final class AuthDtos {
 
     public record LoginRequest(
             @NotBlank(message = "账号不能为空") String account,
-            @NotBlank(message = "密码不能为空") String mima) {
+            @NotBlank(message = "密码不能为空") String password) {
     }
 
     public record RegisterRequest(
             @NotBlank(message = "账号不能为空") @Size(max = 64, message = "账号过长") String account,
-            @NotBlank(message = "密码不能为空") @Size(max = 128, message = "密码过长") String mima,
-            @Size(max = 64, message = "姓名过长") String xingming,
-            @Size(max = 16, message = "性别过长") String xingbie) {
+            @NotBlank(message = "密码不能为空") @Size(max = 128, message = "密码过长") String password,
+            @Size(max = 64, message = "昵称过长") String displayName,
+            @Size(max = 16, message = "性别过长") String gender) {
     }
 
     public record UpdatePasswordRequest(
-            @NotBlank(message = "旧密码不能为空") String oldMima,
-            @NotBlank(message = "新密码不能为空") String newMima) {
+            @NotBlank(message = "旧密码不能为空") String oldPassword,
+            @NotBlank(message = "新密码不能为空") String newPassword) {
     }
 
     public record UpdateProfileRequest(
-            @Size(max = 64, message = "姓名过长") String xingming,
-            @Size(max = 16, message = "性别过长") String xingbie,
-            @Size(max = 32, message = "电话过长") String lianxidianhua,
-            @Size(max = 255, message = "头像地址过长") String touxiang) {
+            @Size(max = 64, message = "昵称过长") String displayName,
+            @Size(max = 16, message = "性别过长") String gender,
+            @Size(max = 32, message = "电话过长") String phone,
+            String avatarUrl) {
     }
 }
