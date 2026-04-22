@@ -148,8 +148,15 @@ public class AppDataController {
 
     @PostMapping("/trips")
     public Map<String, Object> saveTrip(@RequestBody Map<String, Object> body, HttpServletRequest request) {
-        appDataService.saveTrip(appDataService.requireUserId(request), body);
-        return Map.of("ok", true);
+        Long id = appDataService.saveTripReturningId(appDataService.requireUserId(request), body);
+        return Map.of("ok", true, "id", id);
+    }
+
+    @PatchMapping("/trips")
+    public Map<String, Object> updateTrip(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        Long id = reqLong(body, "id");
+        boolean ok = appDataService.updateTrip(appDataService.requireUserId(request), id, body);
+        return Map.of("ok", ok);
     }
 
     @DeleteMapping("/trips")

@@ -10,7 +10,7 @@ import {
   updatePassword as updatePasswordRemote,
   updateProfile as updateProfileRemote,
 } from '../services/auth'
-import { formatUserIdDisplay, deleteTrips, deleteUserAccount, listTrips, listStoreup } from '../services/lynxDb'
+import { formatUserIdDisplay, deleteTrips, deleteUserAccount, listTrips, listStoreup, toggleStoreup, updateTrip } from '../services/lynxDb'
 
 const router = useRouter()
 const user = ref(null)
@@ -67,7 +67,22 @@ const realNameText = computed(() => {
 const emailStatusText = computed(() => (userEmailText.value === '未绑定' ? '未绑定邮箱' : '邮箱已绑定'))
 const orderedTrips = computed(() => [...tripItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
 const orderedStoreups = computed(() => [...storeupItems.value].sort((a, b) => Number(b.id) - Number(a.id)))
-const travelCards = computed(() => (travelTab.value === 'trip' ? orderedTrips.value : orderedStoreups.value))
+const favoritedTripIds = computed(() =>
+  orderedStoreups.value
+    .filter((s) => String(s?.tableName || s?.tablename || '').trim() === 'trip_plans')
+    .map((s) => Number(s?.refId ?? s?.refid ?? 0))
+    .filter((x) => Number.isFinite(x) && x > 0),
+)
+const favoritedTrips = computed(() => {
+  const byId = new Map(orderedTrips.value.map((t) => [Number(t?.id), t]))
+  const out = []
+  for (const id of favoritedTripIds.value) {
+    const hit = byId.get(id)
+    if (hit) out.push(hit)
+  }
+  return out
+})
+const travelCards = computed(() => (travelTab.value === 'trip' ? orderedTrips.value : favoritedTrips.value))
 
 const selectionMode = ref(false)
 const selectedTripIds = ref(new Set())
@@ -141,19 +156,14 @@ function openTripWorkspaceById(tripId) {
 }
 
 function openWorkspaceFromStoreup(item) {
-  const name = String(item?.name || item?.goodname || item?.productName || '').trim()
-  const destination = name || ''
-  const plannerInput = name ? `想围绕「${name}」安排行程：节奏舒适，按天输出上午/下午/晚上活动。` : ''
-  router.push({
-    name: 'my-itinerary-workspace',
-    query: {
-      destination: destination || undefined,
-      departure: '',
-      days: '1',
-      plannerInput: plannerInput || undefined,
-      autogen: '1',
-    },
-  })
+  // 行程收藏：直接按 refId 打开工作台
+  const tableName = String(item?.tableName || item?.tablename || '').trim()
+  const refId = Number(item?.refId ?? item?.refid ?? 0)
+  if (tableName === 'trip_plans' && Number.isFinite(refId) && refId > 0) {
+    openTripWorkspaceById(refId)
+    return
+  }
+  ElMessage.warning('该收藏不是行程数据，暂不支持打开工作台')
 }
 
 function openTravelCard(item) {
@@ -169,7 +179,87 @@ function openTravelCard(item) {
   if (selectionMode.value) {
     return
   }
-  openWorkspaceFromStoreup(item)
+  openTripWorkspaceById(item?.id)
+}
+
+function isTripFavorited(item) {
+  const tripId = Number(item?.id || 0)
+  if (!Number.isFinite(tripId) || tripId <= 0) return false
+  return storeupItems.value.some((s) => {
+    const tableName = String(s?.tableName || s?.tablename || '').trim()
+    const refId = Number(s?.refId ?? s?.refid ?? 0)
+    return tableName === 'trip_plans' && refId === tripId
+  })
+}
+
+async function toggleTripFavorite(item) {
+  const tripId = Number(item?.id || 0)
+  if (!Number.isFinite(tripId) || tripId <= 0) {
+    ElMessage.warning('行程数据异常，无法收藏')
+    return
+  }
+  try {
+    const resp = await toggleStoreup({
+      tablename: 'trip_plans',
+      refid: tripId,
+      name: String(item?.title || travelCardTitle(item) || '我的行程'),
+      picture: String(coverOf(item) || ''),
+    })
+    const fav = !!resp?.fav
+    const rows = await listStoreup()
+    storeupItems.value = Array.isArray(rows) ? rows : []
+    ElMessage.success(fav ? '已收藏该行程' : '已取消收藏')
+  } catch {
+    ElMessage.error('收藏操作失败，请稍后重试')
+  }
+}
+
+function keyPlaceTags(item) {
+  const p = item?.payload || {}
+  const list = Array.isArray(p?.key_places) ? p.key_places : Array.isArray(p?.keyPlaces) ? p.keyPlaces : []
+  return (Array.isArray(list) ? list : [])
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+}
+
+function keyPlaceTagsView(item, limit = 3) {
+  const all = keyPlaceTags(item)
+  const shown = all.slice(0, limit)
+  const hasMore = all.length > limit
+  return { shown, hasMore }
+}
+
+async function editKeyPlaceTags(item) {
+  if (!item?.id) return
+  const current = keyPlaceTags(item)
+  const { value } = await ElMessageBox.prompt('用逗号分隔关键地点标签（例如：博物馆, 中山公园）', '编辑关键地点', {
+    inputValue: current.join(', '),
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    inputPlaceholder: '博物馆, 中山公园',
+    closeOnClickModal: false,
+  }).catch(() => ({ value: null }))
+
+  if (value == null) return
+  const next = String(value || '')
+    .split(/[，,、/|；;\n\r\t]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+
+  const payload = item?.payload && typeof item.payload === 'object' ? { ...item.payload } : {}
+  payload.key_places = next
+  try {
+    const resp = await updateTrip({ id: item.id, payload })
+    if (!resp?.ok) {
+      ElMessage.error('保存失败，请稍后重试')
+      return
+    }
+    item.payload = payload
+    ElMessage.success('已更新关键地点')
+  } catch {
+    ElMessage.error('保存失败，请检查登录状态')
+  }
 }
 
 function handleGlobalPointerDown(ev) {
@@ -523,11 +613,21 @@ async function handleLogoutAccount() {
             :class="{
               'is-selectable': selectionMode && travelTab === 'trip',
               'is-selected': selectionMode && travelTab === 'trip' && isTripSelected(item.id),
-              'is-clickable': travelTab !== 'trip',
+              'is-clickable': !(selectionMode && travelTab === 'trip'),
             }"
             @contextmenu="(e) => openTripContextMenu(e, item.id)"
             @click="openTravelCard(item)"
           >
+            <button
+              v-if="item?.payload"
+              type="button"
+              class="card__favBtn"
+              :aria-pressed="isTripFavorited(item)"
+              :title="isTripFavorited(item) ? '取消收藏' : '收藏行程'"
+              @click.stop="toggleTripFavorite(item)"
+            >
+              <span class="card__favStar" :class="{ 'is-on': isTripFavorited(item) }" aria-hidden="true">⭐</span>
+            </button>
             <button
               v-if="selectionMode && travelTab === 'trip'"
               type="button"
@@ -536,7 +636,7 @@ async function handleLogoutAccount() {
               @click.stop="toggleTripSelected(item.id)"
               aria-label="选择该行程"
             />
-            <div v-if="travelTab === 'trip'" class="card__media" :class="{ 'has-img': !!coverOf(item) }">
+            <div class="card__media" :class="{ 'has-img': !!coverOf(item) }">
               <el-image v-if="coverOf(item)" class="card__img" :src="coverOf(item)" fit="cover" :alt="travelCardTitle(item)">
                 <template #error>
                   <div class="card__ph" aria-hidden="true" />
@@ -544,24 +644,17 @@ async function handleLogoutAccount() {
               </el-image>
               <div v-else class="card__ph" aria-hidden="true" />
             </div>
-            <div v-else class="card__media">
-              <div class="card__ph" aria-hidden="true" />
-            </div>
 
             <div class="card__body">
-              <div class="card__place">{{ travelTab === 'trip' ? placeLine(item) : travelCardTitle(item) }}</div>
+              <div class="card__place">{{ placeLine(item) }}</div>
               <div class="card__tags">
-                <template v-if="travelTab === 'trip'">
-                  <span v-for="tag in preferenceTagsView(item).shown" :key="`${item.id}-${tag}`" class="tag">{{ tag }}</span>
-                  <span v-if="preferenceTagsView(item).hasMore" class="tag tag--muted">…</span>
-                  <span v-if="!preferenceTagsView(item).shown.length" class="tag tag--muted">我的偏爱标签</span>
-                </template>
-                <template v-else>
-                  <span class="tag">ref: {{ item.refid }}</span>
-                </template>
+                <span v-for="tag in keyPlaceTagsView(item).shown" :key="`${item.id}-${tag}`" class="tag">{{ tag }}</span>
+                <span v-if="keyPlaceTagsView(item).hasMore" class="tag tag--muted">…</span>
+                <span v-if="!keyPlaceTagsView(item).shown.length" class="tag tag--muted">关键地点</span>
+                <button class="tagEditBtn" type="button" title="编辑关键地点" @click.stop="editKeyPlaceTags(item)">✎</button>
               </div>
               <div class="card__dayRow">
-                <div class="card__days">{{ travelTab === 'trip' ? daysLine(item) : '收藏项' }}</div>
+                <div class="card__days">{{ daysLine(item) }}</div>
                 <div class="card__date">{{ createdDateLine(item) }}</div>
               </div>
             </div>
@@ -1077,6 +1170,7 @@ async function handleLogoutAccount() {
 .card {
   overflow: hidden;
   cursor: default;
+  position: relative;
   border-radius: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(255, 255, 255, 0.92);
@@ -1096,6 +1190,42 @@ async function handleLogoutAccount() {
 .card.is-selected {
   border-color: rgba(14, 165, 233, 0.5);
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14);
+}
+.card__favBtn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 3;
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 160ms ease;
+}
+.card__favBtn:hover {
+  transform: translateY(-1px) scale(1.05);
+}
+.card__favBtn:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.22);
+  outline-offset: 2px;
+}
+.card__favStar {
+  font-size: 21px;
+  line-height: 1;
+  display: inline-block;
+  transform: rotate(-8deg);
+  filter: grayscale(1) brightness(1.15);
+  opacity: 0.7;
+  transition: transform 160ms ease, filter 160ms ease, opacity 160ms ease;
+}
+.card__favStar.is-on {
+  filter: none;
+  opacity: 1;
+  transform: rotate(-8deg) scale(1.05);
 }
 .card__check {
   position: absolute;
@@ -1197,6 +1327,33 @@ async function handleLogoutAccount() {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+  min-height: 26px;
+}
+.tagEditBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, color 160ms ease, background 160ms ease;
+}
+.tagEditBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(249, 115, 22, 0.26);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  background: #fff;
+}
+.tagEditBtn:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.2);
+  outline-offset: 2px;
 }
 .tag {
   height: 24px;

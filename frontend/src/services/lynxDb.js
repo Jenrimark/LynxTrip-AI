@@ -250,6 +250,11 @@ export async function saveTrip({ title, payload }) {
   return await post('/api/data/trips', { title, payload: payload || {} })
 }
 
+export async function updateTrip({ id, title, payload }) {
+  await fetchMe()
+  return await patch('/api/data/trips', { id, title, payload: payload || {} })
+}
+
 export async function deleteTrips(ids) {
   await fetchMe()
   const list = Array.isArray(ids) ? ids : [ids]

@@ -13,9 +13,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 
 @Service
 public class AppDataService {
@@ -196,6 +203,52 @@ public class AppDataService {
             payload = "{}";
         }
         jdbcTemplate.update("INSERT INTO trip_plans(user_id,title,payload) VALUES(?,?,?)", userId, String.valueOf(body.get("title")), payload);
+    }
+
+    public Long saveTripReturningId(Long userId, Map<String, Object> body) {
+        Object payloadObj = body.get("payload");
+        String payloadText;
+        try {
+            payloadText = objectMapper.writeValueAsString(payloadObj == null ? Map.of() : payloadObj);
+        } catch (Exception e) {
+            payloadText = "{}";
+        }
+        final String payload = payloadText;
+        final String title = String.valueOf(body.get("title"));
+        KeyHolder kh = new GeneratedKeyHolder();
+        PreparedStatementCreator psc = (Connection con) -> {
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO trip_plans(user_id,title,payload) VALUES(?,?,?)",
+                    Statement.RETURN_GENERATED_KEYS
+            );
+            ps.setLong(1, userId);
+            ps.setString(2, title);
+            ps.setString(3, payload);
+            return ps;
+        };
+        jdbcTemplate.update(psc, kh);
+        Number key = kh.getKey();
+        return key == null ? null : key.longValue();
+    }
+
+    public boolean updateTrip(Long userId, Long id, Map<String, Object> body) {
+        if (id == null || id <= 0) {
+            return false;
+        }
+        Object payloadObj = body.get("payload");
+        String payload;
+        try {
+            payload = objectMapper.writeValueAsString(payloadObj == null ? Map.of() : payloadObj);
+        } catch (Exception e) {
+            payload = "{}";
+        }
+        String title = body.containsKey("title") ? String.valueOf(body.get("title")) : null;
+        if (title != null) {
+            return jdbcTemplate.update("UPDATE trip_plans SET title=?, payload=? WHERE id=? AND user_id=?",
+                    title, payload, id, userId) > 0;
+        }
+        return jdbcTemplate.update("UPDATE trip_plans SET payload=? WHERE id=? AND user_id=?",
+                payload, id, userId) > 0;
     }
 
     public void deleteTrips(Long userId, String idsText) {

@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
-import { getCurrentUserId, getUserById, listRoutes, listTrips, saveTrip, upsertCartItem } from '../services/lynxDb'
+import { getCurrentUserId, getUserById, listRoutes, listStoreup, listTrips, saveTrip, toggleStoreup, upsertCartItem } from '../services/lynxDb'
 import heroBg from '../assets/background.png'
 
 const route = useRoute()
@@ -22,6 +22,8 @@ const activeTab = ref('activities') // activities | map | edit | settings
 const result = ref(null)
 const generating = ref(false)
 const generateError = ref('')
+const currentTripId = ref('')
+const isFav = ref(false)
 const citiesChain = ref([])
 const openDays = ref(new Set([1]))
 const editableRows = ref([])
@@ -445,10 +447,12 @@ async function generate() {
     openDays.value = new Set(firstDays.slice(0, 1))
 
     // 保存到 trips（复用现有 /api/data/trips）
-    await saveTrip({
+    const saveResp = await saveTrip({
       title: `${result.value.trip_title || headerTitle.value} · ${result.value.total_days || headerDays.value}天`,
       payload: result.value,
     })
+    const savedId = saveResp?.id != null ? String(saveResp.id) : ''
+    if (savedId) currentTripId.value = savedId
 
     ElMessage.success('已生成并保存行程')
   } catch (e) {
@@ -755,6 +759,7 @@ async function hydrateFromQuery() {
   const q = route.query
   const tripId = String(q.tripId || '').trim()
   if (tripId) {
+    currentTripId.value = tripId
     const rows = await listTrips()
     const hit = rows.find((t) => String(t.id) === tripId)
     if (hit?.payload) {
@@ -801,10 +806,48 @@ async function hydrateFromQuery() {
   if (String(q.autogen || '') === '1') await generate()
 }
 
+async function refreshFavState() {
+  const id = String(currentTripId.value || '').trim()
+  if (!id) {
+    isFav.value = false
+    return
+  }
+  try {
+    const rows = await listStoreup()
+    isFav.value = Array.isArray(rows)
+      ? rows.some((x) => String(x?.tableName || x?.tablename || '') === 'trip_plans' && String(x?.refId || x?.refid || '') === id)
+      : false
+  } catch {
+    isFav.value = false
+  }
+}
+
+async function toggleFav() {
+  const id = String(currentTripId.value || '').trim()
+  if (!id) {
+    ElMessage.warning('请先生成并保存行程后再收藏')
+    return
+  }
+  try {
+    const resp = await toggleStoreup({
+      tablename: 'trip_plans',
+      refid: Number(id),
+      name: String(result.value?.trip_title || headerTitle.value || '我的行程'),
+      picture: '',
+    })
+    const next = !!resp?.fav
+    isFav.value = next
+    ElMessage.success(next ? '已收藏' : '已取消收藏')
+  } catch {
+    ElMessage.warning('收藏操作失败（请先登录）')
+  }
+}
+
 onMounted(async () => {
   const [a, b] = await Promise.all([listRoutes('lvyouxianlu'), listRoutes('zuixinxianlu')])
   allRoutes.value = [...a, ...b]
   await hydrateFromQuery()
+  await refreshFavState()
 })
 
 watch(activeTab, async (next) => {
@@ -841,6 +884,9 @@ watch(itineraryDays, () => {
     <header class="header" :style="{ backgroundImage: `url(${heroBg})` }">
       <div class="header__mask" />
       <div class="header__content">
+        <button class="favBtn" type="button" :aria-pressed="isFav" :title="isFav ? '取消收藏' : '收藏该行程'" @click="toggleFav">
+          <span class="favStar" :class="{ 'is-on': isFav }" aria-hidden="true">★</span>
+        </button>
         <h2>{{ headerTitle }}</h2>
         <div class="header__sub">{{ form.destination || 'China' }} · {{ headerDays }}天</div>
       </div>
@@ -990,6 +1036,42 @@ watch(itineraryDays, () => {
 .header__content { position: relative; z-index: 1; color: #fff; height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 22px; }
 .header__content h2 { margin: 0; font-size: 34px; font-weight: 900; }
 .header__sub { margin-top: 8px; opacity: 0.95; font-weight: 700; }
+
+.favBtn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(2, 6, 23, 0.25);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+.favBtn:hover {
+  transform: translateY(-1px);
+  background: rgba(2, 6, 23, 0.35);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+.favBtn:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.35);
+  outline-offset: 2px;
+}
+.favStar {
+  font-size: 18px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.favStar.is-on {
+  color: #ffd36b;
+  text-shadow: 0 8px 20px rgba(255, 211, 107, 0.28);
+}
 
 .card { border-radius: 16px; padding: 14px; }
 .tools { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }

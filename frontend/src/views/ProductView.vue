@@ -545,6 +545,13 @@ onMounted(() => {
   font-size: 15px;
   font-weight: 900;
   color: #0f172a;
+  background: rgba(255, 255, 255, 1);
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(0, 0, 0, 1);
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 .pillGrid {
   display: grid;
