@@ -128,6 +128,50 @@ function closeTripContextMenu() {
   ctxMenu.value = { open: false, x: 0, y: 0, tripId: null }
 }
 
+function openTripWorkspaceById(tripId) {
+  const id = Number(tripId)
+  if (!Number.isFinite(id) || id <= 0) {
+    ElMessage.warning('行程数据异常，无法打开')
+    return
+  }
+  router.push({
+    name: 'my-itinerary-workspace',
+    query: { tripId: String(id) },
+  })
+}
+
+function openWorkspaceFromStoreup(item) {
+  const name = String(item?.name || item?.goodname || item?.productName || '').trim()
+  const destination = name || ''
+  const plannerInput = name ? `想围绕「${name}」安排行程：节奏舒适，按天输出上午/下午/晚上活动。` : ''
+  router.push({
+    name: 'my-itinerary-workspace',
+    query: {
+      destination: destination || undefined,
+      departure: '',
+      days: '1',
+      plannerInput: plannerInput || undefined,
+      autogen: '1',
+    },
+  })
+}
+
+function openTravelCard(item) {
+  if (travelTab.value === 'trip') {
+    if (selectionMode.value) {
+      toggleTripSelected(item.id)
+      return
+    }
+    openTripWorkspaceById(item?.id)
+    return
+  }
+  // 收藏页不支持“批量管理”，但仍做一致性保护
+  if (selectionMode.value) {
+    return
+  }
+  openWorkspaceFromStoreup(item)
+}
+
 function handleGlobalPointerDown(ev) {
   if (!ctxMenu.value.open) return
   const target = ev?.target
@@ -161,7 +205,8 @@ function travelCardTitle(item) {
 
 function travelCardMeta(item) {
   if (travelTab.value === 'trip') {
-    const days = Number(item?.payload?.days || 0)
+    const p = item?.payload || {}
+    const days = Number(p?.total_days || p?.days || 0)
     return Number.isFinite(days) && days > 0 ? `${days} 天行程` : '行程记录'
   }
   const tablename = String(item?.tablename || '').trim()
@@ -185,6 +230,13 @@ function placeLine(item) {
   const places = []
   if (from) places.push(from)
   if (to && to !== from) places.push(to)
+  // 新 AI 行程：从 itinerary 里推断城市（首尾）
+  if (!places.length && Array.isArray(p.itinerary) && p.itinerary.length) {
+    const firstCity = String(p.itinerary[0]?.city || '').trim()
+    const lastCity = String(p.itinerary[p.itinerary.length - 1]?.city || '').trim()
+    if (firstCity) places.push(firstCity)
+    if (lastCity && lastCity !== firstCity) places.push(lastCity)
+  }
   if (!places.length) places.push(...parsePlacesFromTitle(item?.title || item?.name || ''))
   const unique = [...new Set(places)].slice(0, 3)
   if (!unique.length) return travelCardTitle(item)
@@ -195,9 +247,17 @@ function placeLine(item) {
 function preferenceTags(item) {
   const p = item?.payload || {}
   const tags = []
-  const pref = String(p.preference || '').trim()
-  if (pref) {
-    pref
+  // 新 AI 行程 schema：preferences 为数组
+  if (Array.isArray(p.preferences)) {
+    p.preferences
+      .map((x) => String(x || '').trim())
+      .filter(Boolean)
+      .forEach((x) => tags.push(x))
+  }
+  // 旧 schema：preference 为文本
+  const prefText = String(p.preference || '').trim()
+  if (prefText) {
+    prefText
       .replace(/^多城市路线[:：]/, '')
       .split(/[，,、/|；;\s]+/)
       .map((x) => x.trim())
@@ -219,7 +279,7 @@ function preferenceTagsView(item, limit = 3) {
 
 function daysLine(item) {
   const p = item?.payload
-  const days = Number(p?.days || 0)
+  const days = Number(p?.total_days || p?.days || 0)
   if (Number.isFinite(days) && days > 0) return `${days} 天`
   return '—'
 }
@@ -460,9 +520,13 @@ async function handleLogoutAccount() {
             v-for="item in travelCards"
             :key="`${travelTab}-${item.id}`"
             class="card lynx-card lynx-card--glass"
-            :class="{ 'is-selectable': selectionMode && travelTab === 'trip', 'is-selected': selectionMode && travelTab === 'trip' && isTripSelected(item.id) }"
+            :class="{
+              'is-selectable': selectionMode && travelTab === 'trip',
+              'is-selected': selectionMode && travelTab === 'trip' && isTripSelected(item.id),
+              'is-clickable': travelTab !== 'trip',
+            }"
             @contextmenu="(e) => openTripContextMenu(e, item.id)"
-            @click="selectionMode && travelTab === 'trip' ? toggleTripSelected(item.id) : null"
+            @click="openTravelCard(item)"
           >
             <button
               v-if="selectionMode && travelTab === 'trip'"
@@ -1020,6 +1084,14 @@ async function handleLogoutAccount() {
 }
 .card.is-selectable {
   cursor: pointer;
+}
+.card.is-clickable {
+  cursor: pointer;
+}
+.card.is-clickable:hover {
+  transform: translateY(-1px);
+  border-color: rgba(249, 115, 22, 0.22);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
 }
 .card.is-selected {
   border-color: rgba(14, 165, 233, 0.5);
